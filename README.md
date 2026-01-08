@@ -1,0 +1,418 @@
+# agent-runtime-core
+
+[![PyPI version](https://badge.fury.io/py/agent-runtime-core.svg)](https://badge.fury.io/py/agent-runtime-core)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A lightweight, framework-agnostic Python library for building AI agent systems. Provides the core abstractions and implementations needed to build production-ready AI agents without tying you to any specific framework.
+
+## Features
+
+- 🔌 **Framework Agnostic** - Works with LangGraph, CrewAI, OpenAI Agents, or your own custom loops
+- 🤖 **Model Agnostic** - OpenAI, Anthropic, or any provider via LiteLLM
+- 📦 **Zero Required Dependencies** - Core library has no dependencies; add only what you need
+- 🔄 **Async First** - Built for modern async Python with full sync support
+- 🛠️ **Pluggable Backends** - Memory, Redis, or SQLite for queues, events, and state
+- 📊 **Observable** - Built-in tracing with optional Langfuse integration
+- 🧩 **Composable** - Mix and match components to build your ideal agent system
+
+## Installation
+
+```bash
+# Core library (no dependencies)
+pip install agent-runtime-core
+
+# With specific LLM providers
+pip install agent-runtime-core[openai]
+pip install agent-runtime-core[anthropic]
+pip install agent-runtime-core[litellm]
+
+# With Redis backend support
+pip install agent-runtime-core[redis]
+
+# With observability
+pip install agent-runtime-core[langfuse]
+
+# Everything
+pip install agent-runtime-core[all]
+```
+
+## Quick Start
+
+### Basic Configuration
+
+```python
+from agent_runtime import configure, get_config
+
+# Configure the runtime
+configure(
+    model_provider="openai",
+    openai_api_key="sk-...",  # Or use OPENAI_API_KEY env var
+    default_model="gpt-4o",
+)
+
+# Access configuration anywhere
+config = get_config()
+print(config.model_provider)  # "openai"
+```
+
+### Creating an Agent
+
+```python
+from agent_runtime import (
+    AgentRuntime,
+    RunContext,
+    RunResult,
+    EventType,
+    register_runtime,
+)
+
+class MyAgent(AgentRuntime):
+    """A simple conversational agent."""
+    
+    @property
+    def key(self) -> str:
+        return "my-agent"
+    
+    async def run(self, ctx: RunContext) -> RunResult:
+        # Access input messages
+        messages = ctx.input_messages
+        
+        # Get an LLM client
+        from agent_runtime.llm import get_llm_client
+        llm = get_llm_client()
+        
+        # Generate a response
+        response = await llm.generate(messages)
+        
+        # Emit events for observability
+        await ctx.emit(EventType.ASSISTANT_MESSAGE, {
+            "content": response.message["content"],
+        })
+        
+        # Return the result
+        return RunResult(
+            final_output={"response": response.message["content"]},
+            final_messages=[response.message],
+        )
+
+# Register the agent
+register_runtime(MyAgent())
+```
+
+### Using Tools
+
+```python
+from agent_runtime import Tool, ToolRegistry, RunContext, RunResult
+
+# Define tools
+def get_weather(location: str) -> str:
+    """Get the current weather for a location."""
+    return f"The weather in {location} is sunny, 72°F"
+
+def search_web(query: str) -> str:
+    """Search the web for information."""
+    return f"Search results for: {query}"
+
+# Create a tool registry
+tools = ToolRegistry()
+tools.register(Tool.from_function(get_weather))
+tools.register(Tool.from_function(search_web))
+
+class ToolAgent(AgentRuntime):
+    @property
+    def key(self) -> str:
+        return "tool-agent"
+    
+    async def run(self, ctx: RunContext) -> RunResult:
+        from agent_runtime.llm import get_llm_client
+        llm = get_llm_client()
+        
+        messages = list(ctx.input_messages)
+        
+        while True:
+            # Generate with tools
+            response = await llm.generate(
+                messages,
+                tools=tools.to_openai_format(),
+            )
+            
+            messages.append(response.message)
+            
+            # Check for tool calls
+            if not response.tool_calls:
+                break
+            
+            # Execute tools
+            for tool_call in response.tool_calls:
+                result = await tools.execute(
+                    tool_call["function"]["name"],
+                    tool_call["function"]["arguments"],
+                )
+                
+                await ctx.emit(EventType.TOOL_RESULT, {
+                    "tool_call_id": tool_call["id"],
+                    "result": result,
+                })
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": str(result),
+                })
+        
+        return RunResult(
+            final_output={"response": response.message["content"]},
+            final_messages=messages,
+        )
+```
+
+### Running Agents
+
+```python
+from agent_runtime import AgentRunner, RunnerConfig, get_runtime
+import asyncio
+
+async def main():
+    # Get a registered agent
+    agent = get_runtime("my-agent")
+    
+    # Create a runner
+    runner = AgentRunner(
+        config=RunnerConfig(
+            run_timeout_seconds=300,
+            max_retries=3,
+        )
+    )
+    
+    # Execute a run
+    result = await runner.execute(
+        agent=agent,
+        run_id="run-123",
+        input_data={
+            "messages": [
+                {"role": "user", "content": "Hello!"}
+            ]
+        },
+    )
+    
+    print(result.final_output)
+
+asyncio.run(main())
+```
+
+## Core Concepts
+
+### AgentRuntime
+
+The base class for all agents. Implement the `run` method to define your agent's behavior:
+
+```python
+class AgentRuntime(ABC):
+    @property
+    @abstractmethod
+    def key(self) -> str:
+        """Unique identifier for this agent."""
+        pass
+    
+    @abstractmethod
+    async def run(self, ctx: RunContext) -> RunResult:
+        """Execute the agent logic."""
+        pass
+```
+
+### RunContext
+
+Provides access to the current run's state and utilities:
+
+```python
+class RunContext:
+    run_id: UUID              # Unique run identifier
+    input_messages: list      # Input messages
+    metadata: dict            # Run metadata
+    tools: ToolRegistry       # Available tools
+    
+    async def emit(self, event_type: EventType, payload: dict) -> None:
+        """Emit an event."""
+    
+    async def checkpoint(self, state: dict) -> None:
+        """Save a checkpoint."""
+    
+    def is_cancelled(self) -> bool:
+        """Check if run was cancelled."""
+```
+
+### RunResult
+
+The result of an agent run:
+
+```python
+@dataclass
+class RunResult:
+    final_output: dict           # Structured output
+    final_messages: list = None  # Conversation history
+    error: ErrorInfo = None      # Error details if failed
+```
+
+### Event Types
+
+Built-in event types for observability:
+
+- `EventType.RUN_STARTED` - Run execution began
+- `EventType.RUN_SUCCEEDED` - Run completed successfully
+- `EventType.RUN_FAILED` - Run failed with error
+- `EventType.TOOL_CALL` - Tool was invoked
+- `EventType.TOOL_RESULT` - Tool returned result
+- `EventType.ASSISTANT_MESSAGE` - LLM generated message
+- `EventType.CHECKPOINT` - State checkpoint saved
+
+## Backend Options
+
+### Queue Backends
+
+```python
+from agent_runtime.queue import MemoryQueue, RedisQueue
+
+# In-memory (for development)
+queue = MemoryQueue()
+
+# Redis (for production)
+queue = RedisQueue(redis_url="redis://localhost:6379/0")
+```
+
+### Event Bus Backends
+
+```python
+from agent_runtime.events import MemoryEventBus, RedisEventBus
+
+# In-memory
+event_bus = MemoryEventBus()
+
+# Redis Pub/Sub
+event_bus = RedisEventBus(redis_url="redis://localhost:6379/0")
+```
+
+### State Store Backends
+
+```python
+from agent_runtime.state import MemoryStateStore, RedisStateStore, SQLiteStateStore
+
+# In-memory
+state = MemoryStateStore()
+
+# Redis
+state = RedisStateStore(redis_url="redis://localhost:6379/0")
+
+# SQLite (persistent, single-node)
+state = SQLiteStateStore(db_path="./agent_state.db")
+```
+
+## LLM Clients
+
+### OpenAI
+
+```python
+from agent_runtime.llm import OpenAIClient
+
+client = OpenAIClient(
+    api_key="sk-...",  # Or use OPENAI_API_KEY env var
+    default_model="gpt-4o",
+)
+
+response = await client.generate([
+    {"role": "user", "content": "Hello!"}
+])
+```
+
+### Anthropic
+
+```python
+from agent_runtime.llm import AnthropicClient
+
+client = AnthropicClient(
+    api_key="sk-ant-...",  # Or use ANTHROPIC_API_KEY env var
+    default_model="claude-3-5-sonnet-20241022",
+)
+```
+
+### LiteLLM (Any Provider)
+
+```python
+from agent_runtime.llm import LiteLLMClient
+
+# Use any LiteLLM-supported model
+client = LiteLLMClient(default_model="gpt-4o")
+client = LiteLLMClient(default_model="claude-3-5-sonnet-20241022")
+client = LiteLLMClient(default_model="ollama/llama2")
+```
+
+## Tracing & Observability
+
+### Langfuse Integration
+
+```python
+from agent_runtime import configure
+
+configure(
+    langfuse_enabled=True,
+    langfuse_public_key="pk-...",
+    langfuse_secret_key="sk-...",
+)
+```
+
+### Custom Trace Sink
+
+```python
+from agent_runtime import TraceSink
+
+class MyTraceSink(TraceSink):
+    async def trace(self, event: dict) -> None:
+        # Send to your observability platform
+        print(f"Trace: {event}")
+```
+
+## Integration with Django
+
+For Django applications, use [django-agent-runtime](https://pypi.org/project/django-agent-runtime/) which provides:
+
+- Django models for conversations, runs, and events
+- REST API endpoints
+- Server-Sent Events (SSE) for real-time streaming
+- Management commands for running workers
+- PostgreSQL-backed queue and event bus
+
+```bash
+pip install django-agent-runtime
+```
+
+## API Reference
+
+### Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `model_provider` | str | `"openai"` | LLM provider: openai, anthropic, litellm |
+| `default_model` | str | `"gpt-4o"` | Default model to use |
+| `queue_backend` | str | `"memory"` | Queue backend: memory, redis |
+| `event_bus_backend` | str | `"memory"` | Event bus: memory, redis |
+| `state_store_backend` | str | `"memory"` | State store: memory, redis, sqlite |
+| `redis_url` | str | `None` | Redis connection URL |
+| `langfuse_enabled` | bool | `False` | Enable Langfuse tracing |
+
+### Registry Functions
+
+```python
+register_runtime(runtime: AgentRuntime) -> None
+get_runtime(key: str) -> AgentRuntime
+list_runtimes() -> list[str]
+unregister_runtime(key: str) -> None
+clear_registry() -> None
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.

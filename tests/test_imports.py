@@ -6,7 +6,7 @@ import pytest
 def test_version():
     """Test that version is accessible."""
     import agent_runtime
-    assert agent_runtime.__version__ == "0.1.2"
+    assert agent_runtime.__version__ == "0.1.3"
 
 
 def test_core_imports():

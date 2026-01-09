@@ -34,7 +34,7 @@ Example usage:
             return RunResult(final_output={"message": "Hello!"})
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 # Core interfaces
 from agent_runtime.interfaces import (
@@ -76,6 +76,17 @@ from agent_runtime.runner import (
     RunContextImpl,
 )
 
+
+# Testing utilities
+from agent_runtime.testing import (
+    MockRunContext,
+    MockLLMClient,
+    MockLLMResponse,
+    LLMEvaluator,
+    create_test_context,
+    run_agent_test,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -107,4 +118,11 @@ __all__ = [
     "AgentRunner",
     "RunnerConfig",
     "RunContextImpl",
+    # Testing
+    "MockRunContext",
+    "MockLLMClient",
+    "MockLLMResponse",
+    "LLMEvaluator",
+    "create_test_context",
+    "run_agent_test",
 ]

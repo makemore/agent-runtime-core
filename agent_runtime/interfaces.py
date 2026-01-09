@@ -267,6 +267,10 @@ class ToolRegistry:
             for tool in self._tools.values()
         ]
 
+    def get_tool_definitions(self) -> list[dict]:
+        """Alias for to_openai_format() for backwards compatibility."""
+        return self.to_openai_format()
+
     async def execute(self, name: str, arguments: dict) -> Any:
         """
         Execute a tool by name.

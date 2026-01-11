@@ -268,7 +268,12 @@ class ToolRegistry:
         ]
 
     def get_tool_definitions(self) -> list[dict]:
-        """Alias for to_openai_format() for backwards compatibility."""
+        """
+        Alias for to_openai_format() - more intuitive/discoverable name.
+
+        Both method names are supported to prevent interface mismatches
+        when working from memory or creating fallback implementations.
+        """
         return self.to_openai_format()
 
     async def execute(self, name: str, arguments: dict) -> Any:

@@ -34,7 +34,7 @@ Example usage:
             return RunResult(final_output={"message": "Hello!"})
 """
 
-__version__ = "0.3.0"
+__version__ = "0.5.0"
 
 # Core interfaces
 from agent_runtime_core.interfaces import (
@@ -76,6 +76,16 @@ from agent_runtime_core.runner import (
     RunContextImpl,
 )
 
+# Step execution for long-running multi-step agents
+from agent_runtime_core.steps import (
+    Step,
+    StepExecutor,
+    StepResult,
+    StepStatus,
+    ExecutionState,
+    StepExecutionError,
+    StepCancelledError,
+)
 
 # Testing utilities
 from agent_runtime_core.testing import (
@@ -146,6 +156,14 @@ __all__ = [
     "AgentRunner",
     "RunnerConfig",
     "RunContextImpl",
+    # Step execution
+    "Step",
+    "StepExecutor",
+    "StepResult",
+    "StepStatus",
+    "ExecutionState",
+    "StepExecutionError",
+    "StepCancelledError",
     # Testing
     "MockRunContext",
     "MockLLMClient",

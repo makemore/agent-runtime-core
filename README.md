@@ -677,6 +677,98 @@ result = await run_agent_test(MyAgent(), ctx)
 assert result.final_output["response"] == "Hi there!"
 ```
 
+## Step Executor
+
+The `StepExecutor` provides a structured way to execute multi-step operations with automatic checkpointing, resume capability, retries, and progress reporting. Ideal for long-running agent tasks.
+
+### Basic Usage
+
+```python
+from agent_runtime_core.steps import StepExecutor, Step
+
+class MyAgent(AgentRuntime):
+    async def run(self, ctx: RunContext) -> RunResult:
+        executor = StepExecutor(ctx)
+
+        results = await executor.run([
+            Step("fetch", self.fetch_data),
+            Step("process", self.process_data, retries=3),
+            Step("validate", self.validate_results),
+        ])
+
+        return RunResult(final_output=results)
+
+    async def fetch_data(self, ctx, state):
+        # Fetch data from external API
+        return {"items": [...]}
+
+    async def process_data(self, ctx, state):
+        # Access results from previous steps via state
+        return {"processed": True}
+
+    async def validate_results(self, ctx, state):
+        return {"valid": True}
+```
+
+### Step Options
+
+```python
+Step(
+    name="process",              # Unique step identifier
+    fn=process_data,             # Async function(ctx, state) -> result
+    retries=3,                   # Retry attempts on failure (default: 0)
+    retry_delay=2.0,             # Seconds between retries (default: 1.0)
+    timeout=30.0,                # Step timeout in seconds (optional)
+    description="Process data",  # Human-readable description
+    checkpoint=True,             # Save checkpoint after step (default: True)
+)
+```
+
+### Resume from Checkpoint
+
+Steps automatically checkpoint after completion. If execution is interrupted, it resumes from the last checkpoint:
+
+```python
+# First run - completes step1, fails during step2
+executor = StepExecutor(ctx)
+await executor.run([step1, step2, step3])  # Checkpoints after step1
+
+# Second run - skips step1, resumes from step2
+executor = StepExecutor(ctx)
+await executor.run([step1, step2, step3])  # step1 skipped
+```
+
+### Custom State
+
+Pass state between steps using `initial_state` and the `state` dict:
+
+```python
+async def step1(ctx, state):
+    state["counter"] = 1
+    return "done"
+
+async def step2(ctx, state):
+    state["counter"] += 1  # Access state from step1
+    return state["counter"]
+
+executor = StepExecutor(ctx)
+results = await executor.run(
+    [Step("step1", step1), Step("step2", step2)],
+    initial_state={"counter": 0},
+)
+```
+
+### Events
+
+The executor emits events for observability:
+
+- `EventType.STEP_STARTED` - Step execution began
+- `EventType.STEP_COMPLETED` - Step completed successfully
+- `EventType.STEP_FAILED` - Step failed after all retries
+- `EventType.STEP_RETRYING` - Step is being retried
+- `EventType.STEP_SKIPPED` - Step skipped (already completed)
+- `EventType.PROGRESS_UPDATE` - Progress percentage update
+
 ## API Reference
 
 ### Configuration

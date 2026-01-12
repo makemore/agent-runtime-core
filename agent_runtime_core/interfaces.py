@@ -41,6 +41,14 @@ class EventType(str, Enum):
     # State events
     STATE_CHECKPOINT = "state.checkpoint"
 
+    # Step execution events (for long-running multi-step agents)
+    STEP_STARTED = "step.started"
+    STEP_COMPLETED = "step.completed"
+    STEP_FAILED = "step.failed"
+    STEP_SKIPPED = "step.skipped"  # When resuming from checkpoint
+    STEP_RETRYING = "step.retrying"
+    PROGRESS_UPDATE = "progress.update"  # General progress reporting
+
 
 class Message(TypedDict, total=False):
     """

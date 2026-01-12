@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "Chris Olstrom" }
+    { name = "Chris Barry" }
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -48,8 +48,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/colstrom/agent_runtime_core"
-Repository = "https://github.com/colstrom/agent_runtime_core"
+Homepage = "https://github.com/makemore/agent-runtime-core"
+Repository = "https://github.com/makemore/agent-runtime-core"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent_runtime_core"]

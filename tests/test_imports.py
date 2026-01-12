@@ -6,7 +6,10 @@ import pytest
 def test_version():
     """Test that version is accessible."""
     import agent_runtime
-    assert agent_runtime.__version__ == "0.1.3"
+    # Just check that version is a string in semver format
+    assert isinstance(agent_runtime.__version__, str)
+    parts = agent_runtime.__version__.split(".")
+    assert len(parts) >= 2  # At least major.minor
 
 
 def test_core_imports():

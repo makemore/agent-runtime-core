@@ -34,7 +34,7 @@ Example usage:
             return RunResult(final_output={"message": "Hello!"})
 """
 
-__version__ = "0.1.5"
+__version__ = "0.2.1"
 
 # Core interfaces
 from agent_runtime.interfaces import (
@@ -87,6 +87,34 @@ from agent_runtime.testing import (
     run_agent_test,
 )
 
+# Persistence (memory, conversations, tasks, preferences)
+from agent_runtime.persistence import (
+    # Abstract interfaces
+    MemoryStore,
+    ConversationStore,
+    TaskStore,
+    PreferencesStore,
+    Scope,
+    # Data classes
+    Conversation,
+    ConversationMessage,
+    ToolCall,
+    ToolResult,
+    TaskList,
+    Task,
+    TaskState,
+    # File implementations
+    FileMemoryStore,
+    FileConversationStore,
+    FileTaskStore,
+    FilePreferencesStore,
+    # Manager
+    PersistenceManager,
+    PersistenceConfig,
+    get_persistence_manager,
+    configure_persistence,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -125,4 +153,28 @@ __all__ = [
     "LLMEvaluator",
     "create_test_context",
     "run_agent_test",
+    # Persistence - Abstract interfaces
+    "MemoryStore",
+    "ConversationStore",
+    "TaskStore",
+    "PreferencesStore",
+    "Scope",
+    # Persistence - Data classes
+    "Conversation",
+    "ConversationMessage",
+    "ToolCall",
+    "ToolResult",
+    "TaskList",
+    "Task",
+    "TaskState",
+    # Persistence - File implementations
+    "FileMemoryStore",
+    "FileConversationStore",
+    "FileTaskStore",
+    "FilePreferencesStore",
+    # Persistence - Manager
+    "PersistenceManager",
+    "PersistenceConfig",
+    "get_persistence_manager",
+    "configure_persistence",
 ]

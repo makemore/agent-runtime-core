@@ -42,7 +42,7 @@ pip install agent-runtime-core[all]
 ### Basic Configuration
 
 ```python
-from agent_runtime import configure, get_config
+from agent_runtime_core import configure, get_config
 
 # Configure the runtime
 configure(
@@ -59,7 +59,7 @@ print(config.model_provider)  # "openai"
 ### Creating an Agent
 
 ```python
-from agent_runtime import (
+from agent_runtime_core import (
     AgentRuntime,
     RunContext,
     RunResult,
@@ -69,27 +69,27 @@ from agent_runtime import (
 
 class MyAgent(AgentRuntime):
     """A simple conversational agent."""
-    
+
     @property
     def key(self) -> str:
         return "my-agent"
-    
+
     async def run(self, ctx: RunContext) -> RunResult:
         # Access input messages
         messages = ctx.input_messages
-        
+
         # Get an LLM client
-        from agent_runtime.llm import get_llm_client
+        from agent_runtime_core.llm import get_llm_client
         llm = get_llm_client()
-        
+
         # Generate a response
         response = await llm.generate(messages)
-        
+
         # Emit events for observability
         await ctx.emit(EventType.ASSISTANT_MESSAGE, {
             "content": response.message["content"],
         })
-        
+
         # Return the result
         return RunResult(
             final_output={"response": response.message["content"]},
@@ -103,7 +103,7 @@ register_runtime(MyAgent())
 ### Using Tools
 
 ```python
-from agent_runtime import Tool, ToolRegistry, RunContext, RunResult
+from agent_runtime_core import Tool, ToolRegistry, RunContext, RunResult
 
 # Define tools
 def get_weather(location: str) -> str:
@@ -123,44 +123,44 @@ class ToolAgent(AgentRuntime):
     @property
     def key(self) -> str:
         return "tool-agent"
-    
+
     async def run(self, ctx: RunContext) -> RunResult:
-        from agent_runtime.llm import get_llm_client
+        from agent_runtime_core.llm import get_llm_client
         llm = get_llm_client()
-        
+
         messages = list(ctx.input_messages)
-        
+
         while True:
             # Generate with tools
             response = await llm.generate(
                 messages,
                 tools=tools.to_openai_format(),
             )
-            
+
             messages.append(response.message)
-            
+
             # Check for tool calls
             if not response.tool_calls:
                 break
-            
+
             # Execute tools
             for tool_call in response.tool_calls:
                 result = await tools.execute(
                     tool_call["function"]["name"],
                     tool_call["function"]["arguments"],
                 )
-                
+
                 await ctx.emit(EventType.TOOL_RESULT, {
                     "tool_call_id": tool_call["id"],
                     "result": result,
                 })
-                
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call["id"],
                     "content": str(result),
                 })
-        
+
         return RunResult(
             final_output={"response": response.message["content"]},
             final_messages=messages,
@@ -170,13 +170,13 @@ class ToolAgent(AgentRuntime):
 ### Running Agents
 
 ```python
-from agent_runtime import AgentRunner, RunnerConfig, get_runtime
+from agent_runtime_core import AgentRunner, RunnerConfig, get_runtime
 import asyncio
 
 async def main():
     # Get a registered agent
     agent = get_runtime("my-agent")
-    
+
     # Create a runner
     runner = AgentRunner(
         config=RunnerConfig(
@@ -184,7 +184,7 @@ async def main():
             max_retries=3,
         )
     )
-    
+
     # Execute a run
     result = await runner.execute(
         agent=agent,
@@ -195,7 +195,7 @@ async def main():
             ]
         },
     )
-    
+
     print(result.final_output)
 
 asyncio.run(main())
@@ -214,7 +214,7 @@ class AgentRuntime(ABC):
     def key(self) -> str:
         """Unique identifier for this agent."""
         pass
-    
+
     @abstractmethod
     async def run(self, ctx: RunContext) -> RunResult:
         """Execute the agent logic."""
@@ -231,13 +231,13 @@ class RunContext:
     input_messages: list      # Input messages
     metadata: dict            # Run metadata
     tools: ToolRegistry       # Available tools
-    
+
     async def emit(self, event_type: EventType, payload: dict) -> None:
         """Emit an event."""
-    
+
     async def checkpoint(self, state: dict) -> None:
         """Save a checkpoint."""
-    
+
     def is_cancelled(self) -> bool:
         """Check if run was cancelled."""
 ```
@@ -271,10 +271,10 @@ Built-in event types for observability:
 ### Queue Backends
 
 ```python
-from agent_runtime.queue import MemoryQueue, RedisQueue
+from agent_runtime_core.queue import InMemoryQueue, RedisQueue
 
 # In-memory (for development)
-queue = MemoryQueue()
+queue = InMemoryQueue()
 
 # Redis (for production)
 queue = RedisQueue(redis_url="redis://localhost:6379/0")
@@ -283,10 +283,10 @@ queue = RedisQueue(redis_url="redis://localhost:6379/0")
 ### Event Bus Backends
 
 ```python
-from agent_runtime.events import MemoryEventBus, RedisEventBus
+from agent_runtime_core.events import InMemoryEventBus, RedisEventBus
 
 # In-memory
-event_bus = MemoryEventBus()
+event_bus = InMemoryEventBus()
 
 # Redis Pub/Sub
 event_bus = RedisEventBus(redis_url="redis://localhost:6379/0")
@@ -295,10 +295,10 @@ event_bus = RedisEventBus(redis_url="redis://localhost:6379/0")
 ### State Store Backends
 
 ```python
-from agent_runtime.state import MemoryStateStore, RedisStateStore, SQLiteStateStore
+from agent_runtime_core.state import InMemoryStateStore, RedisStateStore, SQLiteStateStore
 
 # In-memory
-state = MemoryStateStore()
+state = InMemoryStateStore()
 
 # Redis
 state = RedisStateStore(redis_url="redis://localhost:6379/0")
@@ -307,12 +307,113 @@ state = RedisStateStore(redis_url="redis://localhost:6379/0")
 state = SQLiteStateStore(db_path="./agent_state.db")
 ```
 
+## Persistence
+
+The persistence module provides storage for conversations, tasks, memory, and preferences with pluggable backends.
+
+### File-Based Storage (Default)
+
+```python
+from agent_runtime_core.persistence import (
+    PersistenceManager,
+    PersistenceConfig,
+    Scope,
+)
+from pathlib import Path
+
+# Create manager with file-based storage
+config = PersistenceConfig(project_dir=Path.cwd())
+manager = PersistenceManager(config)
+
+# Store memory (key-value)
+await manager.memory.set("user_name", "Alice", scope=Scope.PROJECT)
+name = await manager.memory.get("user_name")
+
+# Store conversations
+from agent_runtime_core.persistence import Conversation, Message
+conv = Conversation(title="Chat 1")
+conv.messages.append(Message(role="user", content="Hello!"))
+await manager.conversations.save(conv)
+
+# Store tasks
+from agent_runtime_core.persistence import Task, TaskState
+task = Task(name="Review code", conversation_id=conv.id)
+await manager.tasks.save(task)
+await manager.tasks.update(task.id, state=TaskState.COMPLETE)
+
+# Store preferences
+await manager.preferences.set("theme", "dark")
+```
+
+### Custom Backends (e.g., Django/Database)
+
+The persistence layer is designed to be pluggable. Implement the abstract base classes for your backend:
+
+```python
+from agent_runtime_core.persistence import (
+    MemoryStore,
+    ConversationStore,
+    TaskStore,
+    PreferencesStore,
+    PersistenceConfig,
+    PersistenceManager,
+)
+
+class MyDatabaseMemoryStore(MemoryStore):
+    def __init__(self, user):
+        self.user = user
+
+    async def get(self, key: str, scope=None) -> Optional[Any]:
+        # Your database logic here
+        pass
+
+    async def set(self, key: str, value: Any, scope=None) -> None:
+        # Your database logic here
+        pass
+
+    # ... implement other methods
+
+# Three ways to configure custom backends:
+
+# 1. Pre-instantiated stores (recommended for request-scoped)
+config = PersistenceConfig(
+    memory_store=MyDatabaseMemoryStore(user=request.user),
+    conversation_store=MyDatabaseConversationStore(user=request.user),
+)
+
+# 2. Factory functions (for lazy instantiation)
+config = PersistenceConfig(
+    memory_store_factory=lambda: MyDatabaseMemoryStore(user=get_current_user()),
+)
+
+# 3. Classes with kwargs
+config = PersistenceConfig(
+    memory_store_class=MyDatabaseMemoryStore,
+    memory_store_kwargs={"user": request.user},
+)
+
+manager = PersistenceManager(config)
+```
+
+### Persistence Data Models
+
+```python
+from agent_runtime_core.persistence import (
+    Conversation,  # Chat conversation with messages
+    Message,       # Single message (user/assistant/system/tool)
+    ToolCall,      # Tool invocation within a message
+    Task,          # Task with state tracking
+    TaskState,     # NOT_STARTED, IN_PROGRESS, COMPLETE, CANCELLED
+    Scope,         # GLOBAL, PROJECT, SESSION
+)
+```
+
 ## LLM Clients
 
 ### OpenAI
 
 ```python
-from agent_runtime.llm import OpenAIClient
+from agent_runtime_core.llm import OpenAIClient
 
 client = OpenAIClient(
     api_key="sk-...",  # Or use OPENAI_API_KEY env var
@@ -327,7 +428,7 @@ response = await client.generate([
 ### Anthropic
 
 ```python
-from agent_runtime.llm import AnthropicClient
+from agent_runtime_core.llm import AnthropicClient
 
 client = AnthropicClient(
     api_key="sk-ant-...",  # Or use ANTHROPIC_API_KEY env var
@@ -338,7 +439,7 @@ client = AnthropicClient(
 ### LiteLLM (Any Provider)
 
 ```python
-from agent_runtime.llm import LiteLLMClient
+from agent_runtime_core.llm import LiteLLMClient
 
 # Use any LiteLLM-supported model
 client = LiteLLMClient(default_model="gpt-4o")
@@ -351,7 +452,7 @@ client = LiteLLMClient(default_model="ollama/llama2")
 ### Langfuse Integration
 
 ```python
-from agent_runtime import configure
+from agent_runtime_core import configure
 
 configure(
     langfuse_enabled=True,
@@ -363,7 +464,7 @@ configure(
 ### Custom Trace Sink
 
 ```python
-from agent_runtime import TraceSink
+from agent_runtime_core import TraceSink
 
 class MyTraceSink(TraceSink):
     async def trace(self, event: dict) -> None:
@@ -375,14 +476,41 @@ class MyTraceSink(TraceSink):
 
 For Django applications, use [django-agent-runtime](https://pypi.org/project/django-agent-runtime/) which provides:
 
-- Django models for conversations, runs, and events
+- Django models for conversations, memory, tasks, and preferences
+- Database-backed persistence stores
 - REST API endpoints
 - Server-Sent Events (SSE) for real-time streaming
 - Management commands for running workers
-- PostgreSQL-backed queue and event bus
 
 ```bash
 pip install django-agent-runtime
+```
+
+## Testing
+
+The library includes testing utilities for unit testing your agents:
+
+```python
+from agent_runtime_core.testing import (
+    MockRunContext,
+    MockLLMClient,
+    create_test_context,
+    run_agent_test,
+)
+
+# Create a mock context
+ctx = create_test_context(
+    input_messages=[{"role": "user", "content": "Hello!"}]
+)
+
+# Create a mock LLM client with predefined responses
+mock_llm = MockLLMClient(responses=[
+    {"role": "assistant", "content": "Hi there!"}
+])
+
+# Run your agent
+result = await run_agent_test(MyAgent(), ctx)
+assert result.final_output["response"] == "Hi there!"
 ```
 
 ## API Reference
@@ -407,6 +535,24 @@ get_runtime(key: str) -> AgentRuntime
 list_runtimes() -> list[str]
 unregister_runtime(key: str) -> None
 clear_registry() -> None
+```
+
+### Persistence Functions
+
+```python
+from agent_runtime_core.persistence import (
+    configure_persistence,
+    get_persistence_manager,
+)
+
+# Configure global persistence
+configure_persistence(
+    memory_store_class=MyMemoryStore,
+    project_dir=Path.cwd(),
+)
+
+# Get the global manager
+manager = get_persistence_manager()
 ```
 
 ## Contributing

@@ -3,7 +3,7 @@
 import pytest
 from uuid import uuid4
 
-from agent_runtime.state import InMemoryStateStore
+from agent_runtime_core.state import InMemoryStateStore
 
 
 @pytest.fixture

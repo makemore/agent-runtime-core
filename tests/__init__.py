@@ -1,1 +1,1 @@
-"""Tests for agent_runtime package."""
+"""Tests for agent_runtime_core package."""

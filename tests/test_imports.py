@@ -5,16 +5,16 @@ import pytest
 
 def test_version():
     """Test that version is accessible."""
-    import agent_runtime
+    import agent_runtime_core
     # Just check that version is a string in semver format
-    assert isinstance(agent_runtime.__version__, str)
-    parts = agent_runtime.__version__.split(".")
+    assert isinstance(agent_runtime_core.__version__, str)
+    parts = agent_runtime_core.__version__.split(".")
     assert len(parts) >= 2  # At least major.minor
 
 
 def test_core_imports():
     """Test that core interfaces can be imported."""
-    from agent_runtime import (
+    from agent_runtime_core import (
         AgentRuntime,
         RunContext,
         RunResult,
@@ -33,7 +33,7 @@ def test_core_imports():
 
 def test_config_imports():
     """Test that config can be imported."""
-    from agent_runtime import (
+    from agent_runtime_core import (
         RuntimeConfig,
         configure,
         get_config,
@@ -46,7 +46,7 @@ def test_config_imports():
 
 def test_registry_imports():
     """Test that registry can be imported."""
-    from agent_runtime import (
+    from agent_runtime_core import (
         register_runtime,
         get_runtime,
         list_runtimes,
@@ -60,7 +60,7 @@ def test_registry_imports():
 
 def test_runner_imports():
     """Test that runner can be imported."""
-    from agent_runtime import (
+    from agent_runtime_core import (
         AgentRunner,
         RunnerConfig,
         RunContextImpl,
@@ -72,10 +72,10 @@ def test_runner_imports():
 
 def test_submodule_imports():
     """Test that submodules can be imported."""
-    from agent_runtime.state import get_state_store, InMemoryStateStore
-    from agent_runtime.queue import get_queue, InMemoryQueue
-    from agent_runtime.events import get_event_bus, InMemoryEventBus
-    from agent_runtime.tracing import get_trace_sink, NoopTraceSink
+    from agent_runtime_core.state import get_state_store, InMemoryStateStore
+    from agent_runtime_core.queue import get_queue, InMemoryQueue
+    from agent_runtime_core.events import get_event_bus, InMemoryEventBus
+    from agent_runtime_core.tracing import get_trace_sink, NoopTraceSink
     
     assert get_state_store is not None
     assert get_queue is not None

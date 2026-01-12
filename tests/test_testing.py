@@ -3,7 +3,7 @@
 import pytest
 from uuid import UUID
 
-from agent_runtime import (
+from agent_runtime_core import (
     AgentRuntime,
     EventType,
     RunContext,
@@ -11,7 +11,7 @@ from agent_runtime import (
     Tool,
     ToolRegistry,
 )
-from agent_runtime.testing import (
+from agent_runtime_core.testing import (
     MockRunContext,
     MockLLMClient,
     MockLLMResponse,

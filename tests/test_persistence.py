@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 from datetime import datetime
 
-from agent_runtime.persistence import (
+from agent_runtime_core.persistence import (
     # Abstract interfaces
     MemoryStore,
     ConversationStore,

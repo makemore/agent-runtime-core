@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-runtime-core"
-version = "0.2.1"
+version = "0.3.0"
 description = "Framework-agnostic Python library for executing AI agents with consistent patterns"
 readme = "README.md"
 license = "MIT"
@@ -52,7 +52,7 @@ Homepage = "https://github.com/colstrom/agent_runtime_core"
 Repository = "https://github.com/colstrom/agent_runtime_core"
 
 [tool.hatch.build.targets.wheel]
-packages = ["agent_runtime"]
+packages = ["agent_runtime_core"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

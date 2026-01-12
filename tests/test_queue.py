@@ -3,7 +3,7 @@
 import pytest
 from uuid import uuid4
 
-from agent_runtime.queue import InMemoryQueue
+from agent_runtime_core.queue import InMemoryQueue
 
 
 @pytest.fixture

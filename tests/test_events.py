@@ -4,7 +4,7 @@ import pytest
 import asyncio
 from uuid import uuid4
 
-from agent_runtime.events import InMemoryEventBus
+from agent_runtime_core.events import InMemoryEventBus
 
 
 @pytest.fixture

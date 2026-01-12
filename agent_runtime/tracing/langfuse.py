@@ -37,7 +37,7 @@ class LangfuseTraceSink(TraceSink):
         if Langfuse is None:
             raise ImportError(
                 "langfuse package is required for LangfuseTraceSink. "
-                "Install with: pip install agent_runtime[langfuse]"
+                "Install with: pip install agent-runtime-core[langfuse]"
             )
 
         self._client = Langfuse(

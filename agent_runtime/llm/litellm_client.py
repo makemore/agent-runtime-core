@@ -38,7 +38,7 @@ class LiteLLMClient(LLMClient):
         if litellm is None:
             raise ImportError(
                 "litellm package is required for LiteLLMClient. "
-                "Install it with: pip install agent_runtime[litellm]"
+                "Install it with: pip install agent-runtime-core[litellm]"
             )
 
         from agent_runtime.config import get_config

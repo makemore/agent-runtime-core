@@ -40,7 +40,7 @@ class AnthropicClient(LLMClient):
         if AsyncAnthropic is None:
             raise ImportError(
                 "anthropic package is required for AnthropicClient. "
-                "Install it with: pip install agent_runtime[anthropic]"
+                "Install it with: pip install agent-runtime-core[anthropic]"
             )
 
         from agent_runtime.config import get_config

@@ -42,7 +42,7 @@ class OpenAIClient(LLMClient):
         if AsyncOpenAI is None:
             raise ImportError(
                 "openai package is required for OpenAIClient. "
-                "Install it with: pip install agent_runtime[openai]"
+                "Install it with: pip install agent-runtime-core[openai]"
             )
 
         from agent_runtime.config import get_config

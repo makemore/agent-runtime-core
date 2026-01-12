@@ -48,8 +48,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/colstrom/agent_runtime"
-Repository = "https://github.com/colstrom/agent_runtime"
+Homepage = "https://github.com/colstrom/agent_runtime_core"
+Repository = "https://github.com/colstrom/agent_runtime_core"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent_runtime"]

@@ -399,13 +399,177 @@ manager = PersistenceManager(config)
 
 ```python
 from agent_runtime_core.persistence import (
-    Conversation,  # Chat conversation with messages
-    Message,       # Single message (user/assistant/system/tool)
-    ToolCall,      # Tool invocation within a message
-    Task,          # Task with state tracking
-    TaskState,     # NOT_STARTED, IN_PROGRESS, COMPLETE, CANCELLED
-    Scope,         # GLOBAL, PROJECT, SESSION
+    # Conversation models
+    Conversation,         # Chat conversation with messages
+    ConversationMessage,  # Single message with branching support
+    ToolCall,             # Tool invocation within a message
+    ToolResult,           # Result of a tool call
+
+    # Task models (with dependencies and checkpoints)
+    Task,                 # Task with state, dependencies, checkpoints
+    TaskList,             # Collection of tasks
+    TaskState,            # NOT_STARTED, IN_PROGRESS, COMPLETE, CANCELLED
+
+    # Knowledge models (optional)
+    Fact,                 # Learned facts about user/project
+    FactType,             # USER, PROJECT, PREFERENCE, CONTEXT, CUSTOM
+    Summary,              # Conversation summaries
+    Embedding,            # Vector embeddings for semantic search
+
+    # Audit models (optional)
+    AuditEntry,           # Interaction logs
+    AuditEventType,       # CONVERSATION_START, TOOL_CALL, AGENT_ERROR, etc.
+    ErrorRecord,          # Error history with resolution tracking
+    ErrorSeverity,        # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    PerformanceMetric,    # Timing, token usage, etc.
+
+    Scope,                # GLOBAL, PROJECT, SESSION
 )
+```
+
+### Conversation Branching
+
+Messages and conversations support branching for edit/regenerate workflows:
+
+```python
+from agent_runtime_core.persistence import Conversation, ConversationMessage
+from uuid import uuid4
+
+# Create a branched message (e.g., user edited their message)
+branch_id = uuid4()
+edited_msg = ConversationMessage(
+    id=uuid4(),
+    role="user",
+    content="Updated question",
+    parent_message_id=original_msg.id,  # Points to original
+    branch_id=branch_id,
+)
+
+# Fork a conversation
+forked_conv = Conversation(
+    id=uuid4(),
+    title="Forked conversation",
+    parent_conversation_id=original_conv.id,
+    active_branch_id=branch_id,
+)
+```
+
+### Enhanced Tasks
+
+Tasks support dependencies, checkpoints for resumable operations, and execution tracking:
+
+```python
+from agent_runtime_core.persistence import Task, TaskState
+from uuid import uuid4
+from datetime import datetime
+
+task = Task(
+    id=uuid4(),
+    name="Process large dataset",
+    description="Multi-step data processing",
+    state=TaskState.IN_PROGRESS,
+
+    # Dependencies - this task depends on others
+    dependencies=[task1.id, task2.id],
+
+    # Scheduling
+    priority=10,  # Higher = more important
+    due_at=datetime(2024, 12, 31),
+
+    # Checkpoint for resumable operations
+    checkpoint_data={"step": 5, "processed": 1000},
+    checkpoint_at=datetime.utcnow(),
+
+    # Execution tracking
+    attempts=2,
+    last_error="Temporary network failure",
+)
+```
+
+### Optional: Knowledge Store
+
+The KnowledgeStore is optional and must be explicitly configured. It stores facts, summaries, and embeddings:
+
+```python
+from agent_runtime_core.persistence import (
+    KnowledgeStore, Fact, FactType, Summary, Embedding,
+    PersistenceConfig, PersistenceManager,
+)
+
+# Implement your own KnowledgeStore
+class MyKnowledgeStore(KnowledgeStore):
+    async def save_fact(self, fact, scope=Scope.PROJECT):
+        # Save to database
+        ...
+
+    async def get_fact(self, fact_id, scope=Scope.PROJECT):
+        ...
+
+    # ... implement other abstract methods
+
+# Configure with optional store
+config = PersistenceConfig(
+    knowledge_store=MyKnowledgeStore(),
+)
+manager = PersistenceManager(config)
+
+# Check if available before using
+if manager.has_knowledge():
+    await manager.knowledge.save_fact(Fact(
+        id=uuid4(),
+        key="user.preferred_language",
+        value="Python",
+        fact_type=FactType.PREFERENCE,
+    ))
+```
+
+### Optional: Audit Store
+
+The AuditStore is optional and tracks interaction logs, errors, and performance metrics:
+
+```python
+from agent_runtime_core.persistence import (
+    AuditStore, AuditEntry, AuditEventType,
+    ErrorRecord, ErrorSeverity, PerformanceMetric,
+)
+
+# Implement your own AuditStore
+class MyAuditStore(AuditStore):
+    async def log_event(self, entry, scope=Scope.PROJECT):
+        # Log to database/file
+        ...
+
+    async def log_error(self, error, scope=Scope.PROJECT):
+        ...
+
+    async def record_metric(self, metric, scope=Scope.PROJECT):
+        ...
+
+    # ... implement other abstract methods
+
+# Use in manager
+config = PersistenceConfig(
+    audit_store=MyAuditStore(),
+)
+manager = PersistenceManager(config)
+
+if manager.has_audit():
+    # Log an event
+    await manager.audit.log_event(AuditEntry(
+        id=uuid4(),
+        event_type=AuditEventType.TOOL_CALL,
+        action="Called search tool",
+        details={"query": "python docs"},
+    ))
+
+    # Record performance metric
+    await manager.audit.record_metric(PerformanceMetric(
+        id=uuid4(),
+        name="llm_latency",
+        value=1250.5,
+        unit="ms",
+        tags={"model": "gpt-4"},
+    ))
 ```
 
 ## LLM Clients

@@ -402,3 +402,189 @@ class TestPersistenceManager:
         assert manager.memory is memory_store
         assert factory_called["called"] is False
 
+    def test_optional_stores_none_by_default(self, temp_dir):
+        """Test that optional stores return None when not configured."""
+        config = PersistenceConfig(project_dir=temp_dir)
+        manager = PersistenceManager(config)
+
+        # Optional stores should be None
+        assert manager.knowledge is None
+        assert manager.audit is None
+        assert manager.has_knowledge() is False
+        assert manager.has_audit() is False
+
+        # Core stores should still work
+        assert manager.memory is not None
+        assert manager.conversations is not None
+
+
+class TestNewModels:
+    """Tests for enhanced models."""
+
+    def test_conversation_message_branching(self):
+        """Test ConversationMessage with branching fields."""
+        parent_id = uuid4()
+        branch_id = uuid4()
+
+        msg = ConversationMessage(
+            id=uuid4(),
+            role="assistant",
+            content="Hello!",
+            parent_message_id=parent_id,
+            branch_id=branch_id,
+        )
+
+        assert msg.parent_message_id == parent_id
+        assert msg.branch_id == branch_id
+
+    def test_conversation_forking(self):
+        """Test Conversation with forking fields."""
+        parent_conv_id = uuid4()
+        branch_id = uuid4()
+
+        conv = Conversation(
+            id=uuid4(),
+            title="Forked conversation",
+            parent_conversation_id=parent_conv_id,
+            active_branch_id=branch_id,
+        )
+
+        assert conv.parent_conversation_id == parent_conv_id
+        assert conv.active_branch_id == branch_id
+
+    def test_task_enhanced_fields(self):
+        """Test Task with enhanced fields."""
+        dep1 = uuid4()
+        dep2 = uuid4()
+
+        task = Task(
+            id=uuid4(),
+            name="Complex task",
+            description="A task with dependencies",
+            dependencies=[dep1, dep2],
+            priority=10,
+            due_at=datetime(2024, 12, 31),
+            checkpoint_data={"step": 5, "progress": 0.5},
+            attempts=2,
+            last_error="Temporary failure",
+        )
+
+        assert task.dependencies == [dep1, dep2]
+        assert task.priority == 10
+        assert task.due_at == datetime(2024, 12, 31)
+        assert task.checkpoint_data == {"step": 5, "progress": 0.5}
+        assert task.attempts == 2
+        assert task.last_error == "Temporary failure"
+
+
+class TestKnowledgeModels:
+    """Tests for knowledge base models."""
+
+    def test_fact_model(self):
+        """Test Fact model."""
+        from agent_runtime_core.persistence import Fact, FactType
+
+        fact = Fact(
+            id=uuid4(),
+            key="user.name",
+            value="Alice",
+            fact_type=FactType.USER,
+            confidence=0.95,
+            source="conversation_123",
+        )
+
+        assert fact.key == "user.name"
+        assert fact.value == "Alice"
+        assert fact.fact_type == FactType.USER
+        assert fact.confidence == 0.95
+        assert fact.source == "conversation_123"
+
+    def test_summary_model(self):
+        """Test Summary model."""
+        from agent_runtime_core.persistence import Summary
+
+        conv_id = uuid4()
+        summary = Summary(
+            id=uuid4(),
+            content="User discussed Python project setup.",
+            conversation_id=conv_id,
+            start_time=datetime(2024, 1, 1, 10, 0),
+            end_time=datetime(2024, 1, 1, 11, 0),
+        )
+
+        assert summary.content == "User discussed Python project setup."
+        assert summary.conversation_id == conv_id
+
+    def test_embedding_model(self):
+        """Test Embedding model."""
+        from agent_runtime_core.persistence import Embedding
+
+        embedding = Embedding(
+            id=uuid4(),
+            vector=[0.1, 0.2, 0.3, 0.4],
+            content="Hello world",
+            content_type="text",
+            model="text-embedding-ada-002",
+            dimensions=4,
+        )
+
+        assert embedding.vector == [0.1, 0.2, 0.3, 0.4]
+        assert embedding.content == "Hello world"
+        assert embedding.dimensions == 4
+
+
+class TestAuditModels:
+    """Tests for audit models."""
+
+    def test_audit_entry_model(self):
+        """Test AuditEntry model."""
+        from agent_runtime_core.persistence import AuditEntry, AuditEventType
+
+        entry = AuditEntry(
+            id=uuid4(),
+            event_type=AuditEventType.TOOL_CALL,
+            action="Called search tool",
+            details={"tool": "search", "query": "python docs"},
+            actor_type="agent",
+            request_id="req_123",
+        )
+
+        assert entry.event_type == AuditEventType.TOOL_CALL
+        assert entry.action == "Called search tool"
+        assert entry.details["tool"] == "search"
+
+    def test_error_record_model(self):
+        """Test ErrorRecord model."""
+        from agent_runtime_core.persistence import ErrorRecord, ErrorSeverity
+
+        error = ErrorRecord(
+            id=uuid4(),
+            severity=ErrorSeverity.ERROR,
+            error_type="ValueError",
+            message="Invalid input",
+            stack_trace="Traceback...",
+            context={"input": "bad data"},
+        )
+
+        assert error.severity == ErrorSeverity.ERROR
+        assert error.error_type == "ValueError"
+        assert error.message == "Invalid input"
+        assert error.resolved is False
+
+    def test_performance_metric_model(self):
+        """Test PerformanceMetric model."""
+        from agent_runtime_core.persistence import PerformanceMetric
+
+        metric = PerformanceMetric(
+            id=uuid4(),
+            name="llm_latency",
+            value=1250.5,
+            unit="ms",
+            tags={"model": "gpt-4", "provider": "openai"},
+        )
+
+        assert metric.name == "llm_latency"
+        assert metric.value == 1250.5
+        assert metric.unit == "ms"
+        assert metric.tags["model"] == "gpt-4"
+

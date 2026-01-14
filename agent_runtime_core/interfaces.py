@@ -303,6 +303,50 @@ class ToolRegistry:
             raise KeyError(f"Tool not found: {name}")
         return await tool.handler(**arguments)
 
+    async def execute_with_events(
+        self,
+        tool_call: Any,  # ToolCall object with name, arguments, id
+        ctx: "RunContext",
+        **kwargs
+    ) -> Any:
+        """
+        Execute a tool and automatically emit events.
+        
+        This is a convenience method that wraps execute() and handles
+        event emission automatically. Use this in your agent loop to
+        reduce boilerplate.
+        
+        Args:
+            tool_call: Tool call object with name, arguments, and id
+            ctx: Run context for emitting events
+            **kwargs: Additional arguments to pass to the tool
+        
+        Returns:
+            Tool result
+        
+        Example:
+            for tool_call in response.tool_calls:
+                result = await tools.execute_with_events(tool_call, ctx)
+        """
+        # Emit tool call event
+        await ctx.emit(EventType.TOOL_CALL, {
+            "tool_name": tool_call.name,
+            "tool_args": tool_call.arguments,
+            "tool_call_id": tool_call.id,
+        })
+        
+        # Execute the tool
+        result = await self.execute(tool_call.name, tool_call.arguments, **kwargs)
+        
+        # Emit tool result event
+        await ctx.emit(EventType.TOOL_RESULT, {
+            "tool_name": tool_call.name,
+            "tool_call_id": tool_call.id,
+            "result": result,
+        })
+        
+        return result
+
 
 class LLMClient(ABC):
     """

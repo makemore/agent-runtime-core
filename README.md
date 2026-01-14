@@ -6,8 +6,15 @@
 
 A lightweight, framework-agnostic Python library for building AI agent systems. Provides the core abstractions and implementations needed to build production-ready AI agents without tying you to any specific framework.
 
-## Features
+## Recent Updates
 
+| Version | Date | Changes |
+|---------|------|---------|
+| **0.5.2** | 2025-01-14 | Add ToolCallingAgent base class, execute_with_events helper |
+| **0.5.1** | 2025-01-13 | Bug fixes and improvements |
+| **0.5.0** | 2025-01-12 | Initial stable release |
+
+## Features
 - 🔌 **Framework Agnostic** - Works with LangGraph, CrewAI, OpenAI Agents, or your own custom loops
 - 🤖 **Model Agnostic** - OpenAI, Anthropic, or any provider via LiteLLM
 - 📦 **Zero Required Dependencies** - Core library has no dependencies; add only what you need

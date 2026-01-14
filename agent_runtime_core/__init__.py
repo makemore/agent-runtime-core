@@ -34,7 +34,7 @@ Example usage:
             return RunResult(final_output={"message": "Hello!"})
 """
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 # Core interfaces
 from agent_runtime_core.interfaces import (
@@ -52,6 +52,10 @@ from agent_runtime_core.interfaces import (
     ToolRegistry,
     TraceSink,
 )
+
+
+# Tool Calling Agent base class
+from agent_runtime_core.tool_calling_agent import ToolCallingAgent
 
 # Configuration
 from agent_runtime_core.config import (
@@ -142,6 +146,7 @@ __all__ = [
     "TraceSink",
     "EventType",
     "ErrorInfo",
+        "ToolCallingAgent",
     # Configuration
     "RuntimeConfig",
     "configure",

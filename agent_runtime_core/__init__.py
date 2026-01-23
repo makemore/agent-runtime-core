@@ -34,7 +34,7 @@ Example usage:
             return RunResult(final_output={"message": "Hello!"})
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 # Core interfaces
 from agent_runtime_core.interfaces import (
@@ -89,6 +89,12 @@ from agent_runtime_core.steps import (
     ExecutionState,
     StepExecutionError,
     StepCancelledError,
+)
+
+# Concrete RunContext implementations for different use cases
+from agent_runtime_core.contexts import (
+    InMemoryRunContext,
+    FileRunContext,
 )
 
 # Testing utilities
@@ -169,6 +175,9 @@ __all__ = [
     "ExecutionState",
     "StepExecutionError",
     "StepCancelledError",
+    # Concrete RunContext implementations
+    "InMemoryRunContext",
+    "FileRunContext",
     # Testing
     "MockRunContext",
     "MockLLMClient",

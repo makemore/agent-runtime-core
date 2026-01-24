@@ -20,6 +20,7 @@ from agent_runtime_core.persistence.base import (
     ConversationStore,
     TaskStore,
     PreferencesStore,
+    KnowledgeStore,
     Scope,
     Conversation,
     ConversationMessage,
@@ -28,6 +29,10 @@ from agent_runtime_core.persistence.base import (
     TaskList,
     Task,
     TaskState,
+    Fact,
+    FactType,
+    Summary,
+    Embedding,
 )
 
 
@@ -505,3 +510,275 @@ class FilePreferencesStore(PreferencesStore):
 
     async def get_all(self, scope: Scope = Scope.GLOBAL) -> dict[str, Any]:
         return await self._load_preferences(scope)
+
+
+class FileKnowledgeStore(KnowledgeStore):
+    """
+    File-based knowledge store with optional vector store integration.
+
+    Stores facts and summaries in JSON files:
+    - {base_path}/knowledge/facts/{fact_id}.json
+    - {base_path}/knowledge/summaries/{summary_id}.json
+
+    Embeddings are stored via an optional VectorStore backend.
+    """
+
+    def __init__(
+        self,
+        project_dir: Optional[Path] = None,
+        vector_store: Optional["VectorStore"] = None,
+        embedding_client: Optional["EmbeddingClient"] = None,
+    ):
+        """
+        Initialize file-based knowledge store.
+
+        Args:
+            project_dir: Base directory for file storage
+            vector_store: Optional VectorStore for embedding storage
+            embedding_client: Optional EmbeddingClient for generating embeddings
+        """
+        self._project_dir = project_dir
+        self._vector_store = vector_store
+        self._embedding_client = embedding_client
+
+    def _get_facts_path(self, scope: Scope) -> Path:
+        return _get_base_path(scope, self._project_dir) / "knowledge" / "facts"
+
+    def _get_summaries_path(self, scope: Scope) -> Path:
+        return _get_base_path(scope, self._project_dir) / "knowledge" / "summaries"
+
+    def _get_fact_path(self, fact_id: UUID, scope: Scope) -> Path:
+        return self._get_facts_path(scope) / f"{fact_id}.json"
+
+    def _get_summary_path(self, summary_id: UUID, scope: Scope) -> Path:
+        return self._get_summaries_path(scope) / f"{summary_id}.json"
+
+    def _serialize_fact(self, fact: Fact) -> dict:
+        return {
+            "id": str(fact.id),
+            "key": fact.key,
+            "value": fact.value,
+            "fact_type": fact.fact_type.value,
+            "confidence": fact.confidence,
+            "source": fact.source,
+            "created_at": fact.created_at.isoformat(),
+            "updated_at": fact.updated_at.isoformat(),
+            "expires_at": fact.expires_at.isoformat() if fact.expires_at else None,
+            "metadata": fact.metadata,
+        }
+
+    def _deserialize_fact(self, data: dict) -> Fact:
+        return Fact(
+            id=_parse_uuid(data["id"]),
+            key=data["key"],
+            value=data["value"],
+            fact_type=FactType(data["fact_type"]),
+            confidence=data.get("confidence", 1.0),
+            source=data.get("source"),
+            created_at=_parse_datetime(data["created_at"]),
+            updated_at=_parse_datetime(data["updated_at"]),
+            expires_at=_parse_datetime(data["expires_at"]) if data.get("expires_at") else None,
+            metadata=data.get("metadata", {}),
+        )
+
+    def _serialize_summary(self, summary: Summary) -> dict:
+        return {
+            "id": str(summary.id),
+            "content": summary.content,
+            "conversation_id": str(summary.conversation_id) if summary.conversation_id else None,
+            "conversation_ids": [str(cid) for cid in summary.conversation_ids],
+            "start_time": summary.start_time.isoformat() if summary.start_time else None,
+            "end_time": summary.end_time.isoformat() if summary.end_time else None,
+            "created_at": summary.created_at.isoformat(),
+            "metadata": summary.metadata,
+        }
+
+    def _deserialize_summary(self, data: dict) -> Summary:
+        return Summary(
+            id=_parse_uuid(data["id"]),
+            content=data["content"],
+            conversation_id=_parse_uuid(data["conversation_id"]) if data.get("conversation_id") else None,
+            conversation_ids=[_parse_uuid(cid) for cid in data.get("conversation_ids", [])],
+            start_time=_parse_datetime(data["start_time"]) if data.get("start_time") else None,
+            end_time=_parse_datetime(data["end_time"]) if data.get("end_time") else None,
+            created_at=_parse_datetime(data["created_at"]),
+            metadata=data.get("metadata", {}),
+        )
+
+    # Fact operations
+    async def save_fact(self, fact: Fact, scope: Scope = Scope.PROJECT) -> None:
+        path = self._get_fact_path(fact.id, scope)
+        _ensure_dir(path.parent)
+        fact.updated_at = datetime.utcnow()
+        with open(path, "w") as f:
+            f.write(_json_dumps(self._serialize_fact(fact)))
+
+    async def get_fact(self, fact_id: UUID, scope: Scope = Scope.PROJECT) -> Optional[Fact]:
+        path = self._get_fact_path(fact_id, scope)
+        if not path.exists():
+            return None
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+                return self._deserialize_fact(data)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    async def get_fact_by_key(self, key: str, scope: Scope = Scope.PROJECT) -> Optional[Fact]:
+        facts_path = self._get_facts_path(scope)
+        if not facts_path.exists():
+            return None
+        for file in facts_path.glob("*.json"):
+            try:
+                with open(file, "r") as f:
+                    data = json.load(f)
+                    if data.get("key") == key:
+                        return self._deserialize_fact(data)
+            except (json.JSONDecodeError, IOError):
+                continue
+        return None
+
+    async def list_facts(
+        self,
+        scope: Scope = Scope.PROJECT,
+        fact_type: Optional[FactType] = None,
+        limit: int = 100,
+    ) -> list[Fact]:
+        facts_path = self._get_facts_path(scope)
+        if not facts_path.exists():
+            return []
+        facts = []
+        for file in facts_path.glob("*.json"):
+            try:
+                with open(file, "r") as f:
+                    data = json.load(f)
+                    fact = self._deserialize_fact(data)
+                    if fact_type is None or fact.fact_type == fact_type:
+                        facts.append(fact)
+            except (json.JSONDecodeError, IOError):
+                continue
+        facts.sort(key=lambda f: f.updated_at, reverse=True)
+        return facts[:limit]
+
+    async def delete_fact(self, fact_id: UUID, scope: Scope = Scope.PROJECT) -> bool:
+        path = self._get_fact_path(fact_id, scope)
+        if path.exists():
+            path.unlink()
+            return True
+        return False
+
+    # Summary operations
+    async def save_summary(self, summary: Summary, scope: Scope = Scope.PROJECT) -> None:
+        path = self._get_summary_path(summary.id, scope)
+        _ensure_dir(path.parent)
+        with open(path, "w") as f:
+            f.write(_json_dumps(self._serialize_summary(summary)))
+
+    async def get_summary(self, summary_id: UUID, scope: Scope = Scope.PROJECT) -> Optional[Summary]:
+        path = self._get_summary_path(summary_id, scope)
+        if not path.exists():
+            return None
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+                return self._deserialize_summary(data)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    async def get_summaries_for_conversation(
+        self,
+        conversation_id: UUID,
+        scope: Scope = Scope.PROJECT,
+    ) -> list[Summary]:
+        summaries_path = self._get_summaries_path(scope)
+        if not summaries_path.exists():
+            return []
+        summaries = []
+        for file in summaries_path.glob("*.json"):
+            try:
+                with open(file, "r") as f:
+                    data = json.load(f)
+                    summary = self._deserialize_summary(data)
+                    if (
+                        summary.conversation_id == conversation_id
+                        or conversation_id in summary.conversation_ids
+                    ):
+                        summaries.append(summary)
+            except (json.JSONDecodeError, IOError):
+                continue
+        summaries.sort(key=lambda s: s.created_at, reverse=True)
+        return summaries
+
+    async def delete_summary(self, summary_id: UUID, scope: Scope = Scope.PROJECT) -> bool:
+        path = self._get_summary_path(summary_id, scope)
+        if path.exists():
+            path.unlink()
+            return True
+        return False
+
+    # Embedding operations (using VectorStore)
+    async def save_embedding(self, embedding: Embedding, scope: Scope = Scope.PROJECT) -> None:
+        if not self._vector_store:
+            raise NotImplementedError("No vector store configured")
+        await self._vector_store.add(
+            id=str(embedding.id),
+            vector=embedding.vector,
+            content=embedding.content,
+            metadata={
+                "content_type": embedding.content_type,
+                "source_id": str(embedding.source_id) if embedding.source_id else None,
+                "model": embedding.model,
+                "dimensions": embedding.dimensions,
+                **embedding.metadata,
+            },
+        )
+
+    async def search_similar(
+        self,
+        query_vector: list[float],
+        limit: int = 10,
+        scope: Scope = Scope.PROJECT,
+        content_type: Optional[str] = None,
+    ) -> list[tuple[Embedding, float]]:
+        if not self._vector_store:
+            raise NotImplementedError("No vector store configured")
+
+        filter_dict = {"content_type": content_type} if content_type else None
+        results = await self._vector_store.search(query_vector, limit=limit, filter=filter_dict)
+
+        return [
+            (
+                Embedding(
+                    id=_parse_uuid(r.id),
+                    vector=[],  # Don't return full vector
+                    content=r.content,
+                    content_type=r.metadata.get("content_type", "text"),
+                    source_id=_parse_uuid(r.metadata["source_id"]) if r.metadata.get("source_id") else None,
+                    model=r.metadata.get("model"),
+                    dimensions=r.metadata.get("dimensions", 0),
+                    created_at=datetime.utcnow(),  # Not stored in vector store
+                    metadata={k: v for k, v in r.metadata.items()
+                              if k not in ("content_type", "source_id", "model", "dimensions")},
+                ),
+                r.score,
+            )
+            for r in results
+        ]
+
+    async def delete_embedding(self, embedding_id: UUID, scope: Scope = Scope.PROJECT) -> bool:
+        if not self._vector_store:
+            raise NotImplementedError("No vector store configured")
+        return await self._vector_store.delete(str(embedding_id))
+
+    async def close(self) -> None:
+        if self._vector_store:
+            await self._vector_store.close()
+
+
+# Type hints for optional imports
+try:
+    from agent_runtime_core.vectorstore.base import VectorStore
+    from agent_runtime_core.vectorstore.embeddings import EmbeddingClient
+except ImportError:
+    VectorStore = None  # type: ignore
+    EmbeddingClient = None  # type: ignore

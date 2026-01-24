@@ -2,6 +2,7 @@
 Anthropic API client implementation.
 """
 
+import json
 import os
 from typing import AsyncIterator, Optional
 
@@ -103,14 +104,17 @@ class AnthropicClient(LLMClient):
         """Generate a completion from Anthropic."""
         model = model or self.default_model
 
-        # Extract system message
+        # Extract system message and convert other messages
         system_message = None
-        chat_messages = []
+        converted_messages = []
         for msg in messages:
             if msg.get("role") == "system":
                 system_message = msg.get("content", "")
             else:
-                chat_messages.append(self._convert_message(msg))
+                converted_messages.append(self._convert_message(msg))
+
+        # Merge consecutive messages with the same role (required by Anthropic)
+        chat_messages = self._merge_consecutive_messages(converted_messages)
 
         request_kwargs = {
             "model": model,
@@ -152,14 +156,17 @@ class AnthropicClient(LLMClient):
         """Stream a completion from Anthropic."""
         model = model or self.default_model
 
-        # Extract system message
+        # Extract system message and convert other messages
         system_message = None
-        chat_messages = []
+        converted_messages = []
         for msg in messages:
             if msg.get("role") == "system":
                 system_message = msg.get("content", "")
             else:
-                chat_messages.append(self._convert_message(msg))
+                converted_messages.append(self._convert_message(msg))
+
+        # Merge consecutive messages with the same role (required by Anthropic)
+        chat_messages = self._merge_consecutive_messages(converted_messages)
 
         request_kwargs = {
             "model": model,
@@ -183,17 +190,129 @@ class AnthropicClient(LLMClient):
                     yield LLMStreamChunk(finish_reason="stop")
 
     def _convert_message(self, msg: Message) -> dict:
-        """Convert our message format to Anthropic format."""
-        role = msg.get("role", "user")
-        if role == "assistant":
-            role = "assistant"
-        elif role == "tool":
-            role = "user"  # Tool results go as user messages in Anthropic
+        """
+        Convert our message format to Anthropic format.
 
+        Handles:
+        - Regular user/assistant messages
+        - Assistant messages with tool_calls (need content blocks)
+        - Tool result messages (need tool_result content blocks)
+        """
+        role = msg.get("role", "user")
+
+        # Handle tool result messages
+        if role == "tool":
+            # Tool results go as user messages with tool_result content blocks
+            return {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": msg.get("tool_call_id", ""),
+                        "content": msg.get("content", ""),
+                    }
+                ],
+            }
+
+        # Handle assistant messages with tool_calls
+        if role == "assistant" and msg.get("tool_calls"):
+            content_blocks = []
+
+            # Add text content if present
+            text_content = msg.get("content", "")
+            if text_content:
+                content_blocks.append({
+                    "type": "text",
+                    "text": text_content,
+                })
+
+            # Add tool_use blocks for each tool call
+            for tool_call in msg.get("tool_calls", []):
+                # Handle both dict format and nested function format
+                if "function" in tool_call:
+                    # OpenAI-style format: {"id": ..., "function": {"name": ..., "arguments": ...}}
+                    func = tool_call["function"]
+                    tool_id = tool_call.get("id", "")
+                    tool_name = func.get("name", "")
+                    # Arguments might be a string (JSON) or already a dict
+                    args = func.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+                else:
+                    # Direct format: {"id": ..., "name": ..., "arguments": ...}
+                    tool_id = tool_call.get("id", "")
+                    tool_name = tool_call.get("name", "")
+                    args = tool_call.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+
+                content_blocks.append({
+                    "type": "tool_use",
+                    "id": tool_id,
+                    "name": tool_name,
+                    "input": args,
+                })
+
+            return {
+                "role": "assistant",
+                "content": content_blocks,
+            }
+
+        # Regular user or assistant message
         return {
             "role": role,
             "content": msg.get("content", ""),
         }
+
+    def _merge_consecutive_messages(self, messages: list[dict]) -> list[dict]:
+        """
+        Merge consecutive messages with the same role.
+
+        Anthropic requires that messages alternate between user and assistant roles.
+        When we have multiple tool results (which become user messages), they need
+        to be combined into a single user message with multiple content blocks.
+        """
+        if not messages:
+            return messages
+
+        merged = []
+        for msg in messages:
+            if not merged:
+                merged.append(msg)
+                continue
+
+            last_msg = merged[-1]
+
+            # If same role, merge the content
+            if msg["role"] == last_msg["role"]:
+                last_content = last_msg["content"]
+                new_content = msg["content"]
+
+                # Convert to list format if needed
+                if isinstance(last_content, str):
+                    if last_content:
+                        last_content = [{"type": "text", "text": last_content}]
+                    else:
+                        last_content = []
+
+                if isinstance(new_content, str):
+                    if new_content:
+                        new_content = [{"type": "text", "text": new_content}]
+                    else:
+                        new_content = []
+
+                # Merge content blocks
+                last_msg["content"] = last_content + new_content
+            else:
+                merged.append(msg)
+
+        return merged
 
     def _convert_tools(self, tools: list[dict]) -> list[dict]:
         """Convert OpenAI tool format to Anthropic format."""
@@ -217,12 +336,14 @@ class AnthropicClient(LLMClient):
             if block.type == "text":
                 content += block.text
             elif block.type == "tool_use":
+                # Convert input to JSON string (not Python str() which gives wrong format)
+                arguments = json.dumps(block.input) if isinstance(block.input, dict) else str(block.input)
                 tool_calls.append({
                     "id": block.id,
                     "type": "function",
                     "function": {
                         "name": block.name,
-                        "arguments": str(block.input),
+                        "arguments": arguments,
                     },
                 })
 

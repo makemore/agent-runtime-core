@@ -32,12 +32,17 @@ anthropic = ["anthropic>=0.18.0"]
 litellm = ["litellm>=1.0.0"]
 redis = ["redis>=5.0.0"]
 langfuse = ["langfuse>=2.0.0"]
+# Vector store backends
+sqlite-vec = ["sqlite-vec>=0.1.0"]
+vertex = ["google-cloud-aiplatform>=1.38.0"]
 all = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
     "litellm>=1.0.0",
     "redis>=5.0.0",
     "langfuse>=2.0.0",
+    "sqlite-vec>=0.1.0",
+    "google-cloud-aiplatform>=1.38.0",
 ]
 dev = [
     "pytest>=8.0.0",

@@ -15,6 +15,18 @@ from typing import Any, Callable, Optional, Protocol, TypedDict, AsyncIterator
 from uuid import UUID
 
 
+class EventVisibility(str, Enum):
+    """
+    Visibility levels for events.
+
+    Controls which events are shown to users in the UI.
+    """
+
+    INTERNAL = "internal"  # Never shown to UI (checkpoints, heartbeats)
+    DEBUG = "debug"  # Shown only in debug mode (tool calls, tool results)
+    USER = "user"  # Always shown to users (assistant messages, errors)
+
+
 class EventType(str, Enum):
     """
     Standard event types emitted by agent runtimes.
@@ -40,6 +52,9 @@ class EventType(str, Enum):
 
     # State events
     STATE_CHECKPOINT = "state.checkpoint"
+
+    # Error events (distinct from run.failed - for runtime errors shown to users)
+    ERROR = "error"
 
     # Step execution events (for long-running multi-step agents)
     STEP_STARTED = "step.started"
@@ -135,6 +150,30 @@ class RunContext(Protocol):
         Args:
             event_type: Type of event (use EventType enum)
             payload: Event payload data
+        """
+        ...
+
+    async def emit_user_message(self, content: str) -> None:
+        """
+        Emit a message that will always be shown to the user.
+
+        This is a convenience method for emitting assistant messages.
+
+        Args:
+            content: The message content to display
+        """
+        ...
+
+    async def emit_error(self, error: str, details: dict = None) -> None:
+        """
+        Emit an error that will be shown to the user.
+
+        This is for runtime errors that should be displayed to users,
+        distinct from run.failed which is the final failure event.
+
+        Args:
+            error: The error message
+            details: Optional additional error details
         """
         ...
 
@@ -403,6 +442,56 @@ class LLMClient(ABC):
         ...
 
 
+class LLMToolCall:
+    """
+    Wrapper for tool call data from LLM responses to provide attribute access.
+
+    This provides a consistent interface for accessing tool call data
+    regardless of the underlying format (OpenAI, Anthropic, etc.).
+
+    Note: This is different from persistence.ToolCall which is a dataclass
+    for storing tool calls in conversations.
+    """
+
+    def __init__(self, data: dict):
+        self._data = data
+
+    @property
+    def id(self) -> str:
+        return self._data.get("id", "")
+
+    @property
+    def name(self) -> str:
+        func = self._data.get("function", {})
+        return func.get("name", "")
+
+    @property
+    def arguments(self) -> dict:
+        import json
+        import ast
+        func = self._data.get("function", {})
+        args = func.get("arguments", "{}")
+        if isinstance(args, str):
+            # First try standard JSON parsing
+            try:
+                return json.loads(args)
+            except json.JSONDecodeError:
+                pass
+
+            # Some models (e.g., Claude via certain providers) return Python dict syntax
+            # with single quotes instead of JSON double quotes. Try ast.literal_eval.
+            try:
+                result = ast.literal_eval(args)
+                if isinstance(result, dict):
+                    return result
+            except (ValueError, SyntaxError):
+                pass
+
+            # Last resort: return empty dict
+            return {}
+        return args
+
+
 @dataclass
 class LLMResponse:
     """Response from an LLM generation."""
@@ -412,6 +501,23 @@ class LLMResponse:
     model: str = ""
     finish_reason: str = ""
     raw_response: Optional[Any] = None
+
+    @property
+    def tool_calls(self) -> Optional[list["LLMToolCall"]]:
+        """Extract tool_calls from the message for convenience."""
+        if isinstance(self.message, dict):
+            calls = self.message.get("tool_calls")
+            if calls:
+                # Convert to LLMToolCall objects with name, arguments, id attributes
+                return [LLMToolCall(tc) for tc in calls]
+        return None
+
+    @property
+    def content(self) -> str:
+        """Extract content from the message for convenience."""
+        if isinstance(self.message, dict):
+            return self.message.get("content", "")
+        return ""
 
 
 @dataclass

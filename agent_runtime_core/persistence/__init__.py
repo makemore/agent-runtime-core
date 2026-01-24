@@ -70,6 +70,7 @@ from agent_runtime_core.persistence.file import (
     FileConversationStore,
     FileTaskStore,
     FilePreferencesStore,
+    FileKnowledgeStore,
 )
 
 from agent_runtime_core.persistence.manager import (
@@ -115,6 +116,7 @@ __all__ = [
     "FileConversationStore",
     "FileTaskStore",
     "FilePreferencesStore",
+    "FileKnowledgeStore",
     # Manager
     "PersistenceManager",
     "PersistenceConfig",

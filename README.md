@@ -10,6 +10,7 @@ A lightweight, framework-agnostic Python library for building AI agent systems. 
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **0.7.0** | 2026-01-24 | RAG module, vector stores (sqlite-vec, Vertex AI), memory system, multi-agent support, agentic loop, JSON runtime |
 | **0.6.0** | 2025-01-23 | Enhanced registry with factory functions and class registration |
 | **0.5.2** | 2025-01-14 | Add ToolCallingAgent base class, execute_with_events helper |
 | **0.5.1** | 2025-01-13 | Bug fixes and improvements |
@@ -776,6 +777,200 @@ The executor emits events for observability:
 - `EventType.STEP_RETRYING` - Step is being retried
 - `EventType.STEP_SKIPPED` - Step skipped (already completed)
 - `EventType.PROGRESS_UPDATE` - Progress percentage update
+
+## Multi-Agent Systems
+
+The `multi_agent` module provides the "agent-as-tool" pattern, allowing agents to invoke other agents as tools. This enables router/dispatcher patterns, hierarchical agent systems, and specialist delegation.
+
+### Core Concepts
+
+**Invocation Modes:**
+- `DELEGATE`: Sub-agent runs and returns result to parent (parent continues). Good for "get me an answer".
+- `HANDOFF`: Control transfers completely to sub-agent (parent exits). Good for "transfer this customer to billing".
+
+**Context Modes:**
+- `FULL`: Complete conversation history passed to sub-agent (default)
+- `SUMMARY`: Summarized context + current message (more efficient)
+- `MESSAGE_ONLY`: Only the invocation message (clean isolation)
+
+### Creating Agent Tools
+
+Wrap any agent as a tool that can be called by other agents:
+
+```python
+from agent_runtime_core.multi_agent import (
+    AgentTool,
+    InvocationMode,
+    ContextMode,
+    invoke_agent,
+    register_agent_tools,
+)
+
+# Define specialist agents
+class BillingAgent(AgentRuntime):
+    @property
+    def key(self) -> str:
+        return "billing-specialist"
+
+    async def run(self, ctx: RunContext) -> RunResult:
+        # Handle billing questions, refunds, payments
+        ...
+
+class TechSupportAgent(AgentRuntime):
+    @property
+    def key(self) -> str:
+        return "tech-support"
+
+    async def run(self, ctx: RunContext) -> RunResult:
+        # Handle technical issues
+        ...
+
+# Wrap agents as tools
+billing_tool = AgentTool(
+    agent=BillingAgent(),
+    name="billing_specialist",
+    description="Handles billing questions, refunds, and payment issues. Use when customer has billing-related questions.",
+    invocation_mode=InvocationMode.DELEGATE,
+    context_mode=ContextMode.FULL,
+)
+
+tech_support_tool = AgentTool(
+    agent=TechSupportAgent(),
+    name="tech_support",
+    description="Handles technical issues and troubleshooting. Use for technical problems.",
+    invocation_mode=InvocationMode.HANDOFF,  # Transfer control completely
+)
+```
+
+### Router Agent Pattern
+
+Create a router agent that delegates to specialists:
+
+```python
+class RouterAgent(AgentRuntime):
+    """Routes customer requests to appropriate specialist agents."""
+
+    def __init__(self):
+        self.agent_tools = [billing_tool, tech_support_tool]
+
+    @property
+    def key(self) -> str:
+        return "customer-router"
+
+    async def run(self, ctx: RunContext) -> RunResult:
+        from agent_runtime_core.llm import get_llm_client
+        llm = get_llm_client()
+
+        # Create tool registry with agent-tools
+        tools = ToolRegistry()
+        messages = list(ctx.input_messages)
+
+        # Register agent-tools as callable tools
+        register_agent_tools(
+            registry=tools,
+            agent_tools=self.agent_tools,
+            get_conversation_history=lambda: messages,
+            parent_ctx=ctx,
+        )
+
+        # Add system prompt for routing
+        system_message = {
+            "role": "system",
+            "content": """You are a customer service router. Analyze the customer's
+            request and delegate to the appropriate specialist:
+            - billing_specialist: For billing, payments, refunds
+            - tech_support: For technical issues (this will transfer the customer)
+
+            If you can answer directly, do so. Otherwise, use the appropriate tool."""
+        }
+
+        while True:
+            response = await llm.generate(
+                [system_message] + messages,
+                tools=tools.to_openai_format(),
+            )
+
+            messages.append(response.message)
+
+            if not response.tool_calls:
+                # No tool call - respond directly
+                await ctx.emit(EventType.ASSISTANT_MESSAGE, {
+                    "content": response.content,
+                })
+                break
+
+            # Execute tool calls (which may invoke sub-agents)
+            for tool_call in response.tool_calls:
+                result = await tools.execute_with_events(tool_call, ctx)
+
+                # Check for handoff
+                if isinstance(result, dict) and result.get("handoff"):
+                    # Sub-agent took over - we're done
+                    return RunResult(
+                        final_output=result.get("final_output", {}),
+                        final_messages=messages,
+                    )
+
+                # Add result to conversation
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": str(result.get("response", result)),
+                })
+
+        return RunResult(
+            final_output={"response": response.content},
+            final_messages=messages,
+        )
+```
+
+### Direct Invocation
+
+You can also invoke agents directly without the tool pattern:
+
+```python
+from agent_runtime_core.multi_agent import invoke_agent
+
+# Invoke a sub-agent directly
+result = await invoke_agent(
+    agent_tool=billing_tool,
+    message="Customer wants a refund for order #123",
+    parent_ctx=ctx,
+    conversation_history=messages,
+    additional_context="Customer has been waiting 2 weeks",
+)
+
+if result.handoff:
+    # Sub-agent took over
+    return RunResult(final_output=result.run_result.final_output)
+else:
+    # Use the response
+    print(result.response)
+```
+
+### Events
+
+Multi-agent invocations emit events for observability:
+
+- `sub_agent.start` - Sub-agent invocation started
+- `sub_agent.end` - Sub-agent invocation completed
+- `tool.call` with `is_agent_tool: true` - Agent-tool was called
+- `tool.result` with `is_agent_tool: true` - Agent-tool returned
+
+### AgentTool Options
+
+```python
+AgentTool(
+    agent=my_agent,                          # Required: The agent to wrap
+    name="specialist",                       # Required: Tool name
+    description="When to use this agent",    # Required: Shown to parent LLM
+    invocation_mode=InvocationMode.DELEGATE, # DELEGATE or HANDOFF
+    context_mode=ContextMode.FULL,           # FULL, SUMMARY, or MESSAGE_ONLY
+    max_turns=10,                            # Optional: Limit sub-agent turns
+    input_schema={...},                      # Optional: Custom input schema
+    metadata={"category": "billing"},        # Optional: Additional metadata
+)
+```
 
 ## API Reference
 

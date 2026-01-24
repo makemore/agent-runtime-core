@@ -40,10 +40,12 @@ __version__ = "0.7.0"
 from agent_runtime_core.interfaces import (
     AgentRuntime,
     EventType,
+    EventVisibility,
     ErrorInfo,
     LLMClient,
     LLMResponse,
     LLMStreamChunk,
+    LLMToolCall,
     Message,
     RunContext,
     RunResult,
@@ -56,6 +58,12 @@ from agent_runtime_core.interfaces import (
 
 # Tool Calling Agent base class
 from agent_runtime_core.tool_calling_agent import ToolCallingAgent
+
+# Agentic loop helper
+from agent_runtime_core.agentic_loop import (
+    run_agentic_loop,
+    AgenticLoopResult,
+)
 
 # Configuration
 from agent_runtime_core.config import (
@@ -128,12 +136,76 @@ from agent_runtime_core.persistence import (
     FileConversationStore,
     FileTaskStore,
     FilePreferencesStore,
+    FileKnowledgeStore,
     # Manager
     PersistenceManager,
     PersistenceConfig,
     get_persistence_manager,
     configure_persistence,
 )
+
+# Agent configuration schema (portable JSON format)
+from agent_runtime_core.config_schema import (
+    AgentConfig,
+    ToolConfig,
+    KnowledgeConfig,
+    SubAgentToolConfig,
+)
+
+# JSON-based runtime (loads from AgentConfig)
+from agent_runtime_core.json_runtime import (
+    JsonAgentRuntime,
+    ConfiguredTool,
+    SubAgentTool,
+    resolve_function,
+)
+
+# Vector store (optional - requires additional dependencies)
+# Import these directly from agent_runtime_core.vectorstore when needed:
+#   from agent_runtime_core.vectorstore import (
+#       VectorStore, VectorRecord, VectorSearchResult,
+#       EmbeddingClient, OpenAIEmbeddings, VertexAIEmbeddings,
+#       get_vector_store, get_embedding_client,
+#   )
+
+# RAG (Retrieval Augmented Generation)
+from agent_runtime_core.rag import (
+    chunk_text,
+    ChunkingConfig,
+    TextChunk,
+)
+
+# RAG services are imported lazily to avoid circular dependencies
+# Import directly when needed:
+#   from agent_runtime_core.rag import KnowledgeIndexer, KnowledgeRetriever
+
+# Tool schema builder utilities
+from agent_runtime_core.tools import (
+    ToolSchema,
+    ToolSchemaBuilder,
+    ToolParameter,
+    schemas_to_openai_format,
+)
+
+# Multi-agent support (agent-as-tool pattern)
+from agent_runtime_core.multi_agent import (
+    AgentTool,
+    AgentInvocationResult,
+    InvocationMode,
+    ContextMode,
+    SubAgentContext,
+    invoke_agent,
+    create_agent_tool_handler,
+    register_agent_tools,
+    build_sub_agent_messages,
+)
+
+# Cross-conversation memory
+# Import directly when needed for full functionality:
+#   from agent_runtime_core.memory import (
+#       MemoryManager, MemoryConfig, MemoryEnabledAgent,
+#       ExtractedMemory, RecalledMemory, with_memory,
+#   )
 
 __all__ = [
     # Version
@@ -143,6 +215,7 @@ __all__ = [
     "LLMClient",
     "LLMResponse",
     "LLMStreamChunk",
+    "LLMToolCall",
     "Message",
     "RunContext",
     "RunResult",
@@ -151,8 +224,12 @@ __all__ = [
     "ToolDefinition",
     "TraceSink",
     "EventType",
+    "EventVisibility",
     "ErrorInfo",
-        "ToolCallingAgent",
+    # Tool calling
+    "ToolCallingAgent",
+    "run_agentic_loop",
+    "AgenticLoopResult",
     # Configuration
     "RuntimeConfig",
     "configure",
@@ -204,9 +281,39 @@ __all__ = [
     "FileConversationStore",
     "FileTaskStore",
     "FilePreferencesStore",
+    "FileKnowledgeStore",
     # Persistence - Manager
     "PersistenceManager",
     "PersistenceConfig",
     "get_persistence_manager",
     "configure_persistence",
+    # Agent configuration schema
+    "AgentConfig",
+    "ToolConfig",
+    "KnowledgeConfig",
+    "SubAgentToolConfig",
+    # JSON-based runtime
+    "JsonAgentRuntime",
+    "ConfiguredTool",
+    "SubAgentTool",
+    "resolve_function",
+    # RAG (Retrieval Augmented Generation)
+    "chunk_text",
+    "ChunkingConfig",
+    "TextChunk",
+    # Tool schema builder
+    "ToolSchema",
+    "ToolSchemaBuilder",
+    "ToolParameter",
+    "schemas_to_openai_format",
+    # Multi-agent support
+    "AgentTool",
+    "AgentInvocationResult",
+    "InvocationMode",
+    "ContextMode",
+    "SubAgentContext",
+    "invoke_agent",
+    "create_agent_tool_handler",
+    "register_agent_tools",
+    "build_sub_agent_messages",
 ]

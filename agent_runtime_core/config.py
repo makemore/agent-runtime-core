@@ -59,7 +59,35 @@ class RuntimeConfig:
     max_retries: int = 3
     retry_backoff_base: int = 2
     retry_backoff_max: int = 300
-    
+
+    # Conversation history settings
+    # When True, agents automatically receive message history from previous runs
+    # in the same conversation. This enables multi-turn conversations by default.
+    include_conversation_history: bool = True
+
+    # Maximum number of history messages to include (None = no limit)
+    # Useful for limiting context window usage with long conversations
+    max_history_messages: Optional[int] = None
+
+    # Whether to automatically persist messages after each run
+    # When True, final_messages are saved to the conversation store
+    auto_persist_messages: bool = True
+
+    # Vector store settings
+    vector_store_backend: str = "none"  # none, sqlite_vec, pgvector, vertex
+    vector_store_path: Optional[str] = None  # For sqlite_vec file path
+
+    # Embedding settings
+    embedding_provider: str = "openai"  # openai, vertex
+    embedding_model: str = "text-embedding-3-small"
+
+    # Vertex AI settings (for vertex vector store and embeddings)
+    vertex_project_id: Optional[str] = None
+    vertex_location: str = "us-central1"
+    vertex_index_endpoint_id: Optional[str] = None
+    vertex_deployed_index_id: Optional[str] = None
+    vertex_index_id: Optional[str] = None
+
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key from config or environment."""
         return self.openai_api_key or os.environ.get("OPENAI_API_KEY")
@@ -150,8 +178,19 @@ def _apply_env_vars(config: RuntimeConfig) -> None:
         "AGENT_RUNTIME_LANGFUSE_PUBLIC_KEY": "langfuse_public_key",
         "AGENT_RUNTIME_LANGFUSE_SECRET_KEY": "langfuse_secret_key",
         "AGENT_RUNTIME_LANGFUSE_HOST": "langfuse_host",
+        # Vector store settings
+        "AGENT_RUNTIME_VECTOR_STORE_BACKEND": "vector_store_backend",
+        "AGENT_RUNTIME_VECTOR_STORE_PATH": "vector_store_path",
+        "AGENT_RUNTIME_EMBEDDING_PROVIDER": "embedding_provider",
+        "AGENT_RUNTIME_EMBEDDING_MODEL": "embedding_model",
+        # Vertex AI settings
+        "AGENT_RUNTIME_VERTEX_PROJECT_ID": "vertex_project_id",
+        "AGENT_RUNTIME_VERTEX_LOCATION": "vertex_location",
+        "AGENT_RUNTIME_VERTEX_INDEX_ENDPOINT_ID": "vertex_index_endpoint_id",
+        "AGENT_RUNTIME_VERTEX_DEPLOYED_INDEX_ID": "vertex_deployed_index_id",
+        "AGENT_RUNTIME_VERTEX_INDEX_ID": "vertex_index_id",
     }
-    
+
     int_fields = {
         "AGENT_RUNTIME_RUN_TIMEOUT_SECONDS": "run_timeout_seconds",
         "AGENT_RUNTIME_HEARTBEAT_INTERVAL_SECONDS": "heartbeat_interval_seconds",
@@ -159,14 +198,25 @@ def _apply_env_vars(config: RuntimeConfig) -> None:
         "AGENT_RUNTIME_MAX_RETRIES": "max_retries",
         "AGENT_RUNTIME_RETRY_BACKOFF_BASE": "retry_backoff_base",
         "AGENT_RUNTIME_RETRY_BACKOFF_MAX": "retry_backoff_max",
+        "AGENT_RUNTIME_MAX_HISTORY_MESSAGES": "max_history_messages",
     }
-    
+
+    bool_fields = {
+        "AGENT_RUNTIME_INCLUDE_CONVERSATION_HISTORY": "include_conversation_history",
+        "AGENT_RUNTIME_AUTO_PERSIST_MESSAGES": "auto_persist_messages",
+    }
+
     for env_var, attr in env_mapping.items():
         value = os.environ.get(env_var)
         if value is not None:
             setattr(config, attr, value)
-    
+
     for env_var, attr in int_fields.items():
         value = os.environ.get(env_var)
         if value is not None:
             setattr(config, attr, int(value))
+
+    for env_var, attr in bool_fields.items():
+        value = os.environ.get(env_var)
+        if value is not None:
+            setattr(config, attr, value.lower() in ("true", "1", "yes", "on"))

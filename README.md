@@ -10,7 +10,7 @@ A lightweight, framework-agnostic Python library for building AI agent systems. 
 
 | Version | Date | Changes |
 |---------|------|---------|
-| **0.7.0** | 2026-01-24 | RAG module, vector stores (sqlite-vec, Vertex AI), memory system, multi-agent support, agentic loop, JSON runtime |
+| **0.7.1** | 2026-01-24 | RAG module, vector stores (sqlite-vec, Vertex AI), memory system, multi-agent support, agentic loop, JSON runtime |
 | **0.6.0** | 2025-01-23 | Enhanced registry with factory functions and class registration |
 | **0.5.2** | 2025-01-14 | Add ToolCallingAgent base class, execute_with_events helper |
 | **0.5.1** | 2025-01-13 | Bug fixes and improvements |

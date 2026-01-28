@@ -10,6 +10,7 @@ A lightweight, framework-agnostic Python library for building AI agent systems. 
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **0.9.0** | 2026-01-28 | **Multi-Agent & Debug** - Shared memory with privacy controls, journey mode, structured handback protocol, stuck/loop detection, fallback routing, cost/context tracking in debug mode |
 | **0.8.0** | 2026-01-28 | **File Ingestion** - Pluggable file processors (PDF, images, DOCX, XLSX, CSV), OCR providers (Tesseract, Google Vision, AWS Textract, Azure), AI vision (OpenAI, Anthropic, Gemini), file read/write tools |
 | **0.7.1** | 2026-01-24 | RAG module, vector stores (sqlite-vec, Vertex AI), memory system, multi-agent support, agentic loop, JSON runtime |
 | **0.6.0** | 2025-01-23 | Enhanced registry with factory functions and class registration |

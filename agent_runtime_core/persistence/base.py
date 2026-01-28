@@ -29,7 +29,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional, AsyncIterator
+from typing import Any, Optional, AsyncIterator, List, Dict
 from uuid import UUID
 
 
@@ -731,6 +731,323 @@ class AuditStore(ABC):
         Returns: {count, min, max, avg, sum, p50, p95, p99}
         """
         ...
+
+    async def close(self) -> None:
+        """Close any connections. Override if needed."""
+        pass
+
+
+# =============================================================================
+# Shared Memory Models and Store
+# =============================================================================
+
+
+@dataclass
+class MemoryItem:
+    """
+    A single memory item with semantic key.
+
+    Memory items use dot-notation keys for hierarchical organization:
+    - user.name → "Chris"
+    - user.preferences.theme → "dark"
+    - user.preferences.language → "en"
+    - project.name → "Agent Libraries"
+    - conversation.summary → "Discussed privacy features..."
+
+    Attributes:
+        id: Unique identifier for this memory
+        key: Semantic key using dot-notation (e.g., "user.preferences.theme")
+        value: The actual value (any JSON-serializable type)
+        scope: Memory scope (CONVERSATION, USER, SYSTEM)
+        created_at: When this memory was created
+        updated_at: When this memory was last updated
+        source: What created this memory (e.g., "agent:triage", "user:explicit")
+        confidence: How confident the agent is (0.0-1.0)
+        metadata: Additional context about this memory
+        expires_at: Optional expiration time
+        conversation_id: For CONVERSATION scope, the conversation this belongs to
+        system_id: For SYSTEM scope, the system this belongs to
+    """
+
+    id: UUID
+    key: str
+    value: Any
+    scope: str = "conversation"  # MemoryScope value as string
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+    source: str = "agent"
+    confidence: float = 1.0
+    metadata: dict = field(default_factory=dict)
+    expires_at: Optional[datetime] = None
+    conversation_id: Optional[UUID] = None
+    system_id: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        return {
+            "id": str(self.id),
+            "key": self.key,
+            "value": self.value,
+            "scope": self.scope,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "source": self.source,
+            "confidence": self.confidence,
+            "metadata": self.metadata,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "conversation_id": str(self.conversation_id) if self.conversation_id else None,
+            "system_id": self.system_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "MemoryItem":
+        """Create from dictionary."""
+        return cls(
+            id=UUID(data["id"]) if isinstance(data.get("id"), str) else data.get("id"),
+            key=data["key"],
+            value=data["value"],
+            scope=data.get("scope", "conversation"),
+            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.utcnow(),
+            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else datetime.utcnow(),
+            source=data.get("source", "agent"),
+            confidence=data.get("confidence", 1.0),
+            metadata=data.get("metadata", {}),
+            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            conversation_id=UUID(data["conversation_id"]) if data.get("conversation_id") else None,
+            system_id=data.get("system_id"),
+        )
+
+
+class SharedMemoryStore(ABC):
+    """
+    Abstract interface for shared memory storage.
+
+    Shared memory stores handle user-scoped memories that can be shared
+    across agents in a system. This is different from the basic MemoryStore
+    which is just key-value - SharedMemoryStore has:
+
+    - Semantic keys with dot-notation hierarchy
+    - Scope awareness (conversation, user, system)
+    - Confidence scores
+    - Source tracking
+    - Expiration support
+    - Batch operations
+    - Filtering and listing
+
+    Privacy enforcement should happen at the framework level (e.g., Django)
+    before calling these methods.
+
+    Example:
+        store = DjangoSharedMemoryStore(user=request.user)
+
+        # Set a memory
+        await store.set("user.preferences.theme", "dark", scope=MemoryScope.USER)
+
+        # Get a memory
+        theme = await store.get("user.preferences.theme")
+
+        # List all user preferences
+        prefs = await store.list(prefix="user.preferences", scope=MemoryScope.USER)
+
+        # Delete a memory
+        await store.delete("user.preferences.theme")
+    """
+
+    @abstractmethod
+    async def get(
+        self,
+        key: str,
+        scope: Optional[str] = None,
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+    ) -> Optional[MemoryItem]:
+        """
+        Get a memory item by key.
+
+        Args:
+            key: The semantic key (e.g., "user.preferences.theme")
+            scope: Optional scope filter (conversation, user, system)
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+
+        Returns:
+            The MemoryItem if found, None otherwise
+        """
+        ...
+
+    @abstractmethod
+    async def set(
+        self,
+        key: str,
+        value: Any,
+        scope: str = "user",
+        source: str = "agent",
+        confidence: float = 1.0,
+        metadata: Optional[dict] = None,
+        expires_at: Optional[datetime] = None,
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+    ) -> MemoryItem:
+        """
+        Set a memory item. Creates or updates.
+
+        Args:
+            key: The semantic key (e.g., "user.preferences.theme")
+            value: The value to store (any JSON-serializable type)
+            scope: Memory scope (conversation, user, system)
+            source: What created this (e.g., "agent:triage")
+            confidence: Confidence score (0.0-1.0)
+            metadata: Additional context
+            expires_at: Optional expiration time
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+
+        Returns:
+            The created/updated MemoryItem
+        """
+        ...
+
+    @abstractmethod
+    async def delete(
+        self,
+        key: str,
+        scope: Optional[str] = None,
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Delete a memory item.
+
+        Args:
+            key: The semantic key
+            scope: Optional scope filter
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+
+        Returns:
+            True if the memory existed and was deleted
+        """
+        ...
+
+    @abstractmethod
+    async def list(
+        self,
+        prefix: Optional[str] = None,
+        scope: Optional[str] = None,
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+        source: Optional[str] = None,
+        min_confidence: Optional[float] = None,
+        limit: int = 100,
+    ) -> List[MemoryItem]:
+        """
+        List memory items with optional filters.
+
+        Args:
+            prefix: Filter by key prefix (e.g., "user.preferences")
+            scope: Filter by scope
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+            source: Filter by source
+            min_confidence: Minimum confidence score
+            limit: Maximum number of items to return
+
+        Returns:
+            List of matching MemoryItems
+        """
+        ...
+
+    @abstractmethod
+    async def get_many(
+        self,
+        keys: List[str],
+        scope: Optional[str] = None,
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+    ) -> Dict[str, MemoryItem]:
+        """
+        Get multiple memory items by keys.
+
+        Args:
+            keys: List of semantic keys
+            scope: Optional scope filter
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+
+        Returns:
+            Dictionary of key -> MemoryItem for found items
+        """
+        ...
+
+    @abstractmethod
+    async def set_many(
+        self,
+        items: List[tuple],
+        scope: str = "user",
+        source: str = "agent",
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+    ) -> List[MemoryItem]:
+        """
+        Set multiple memory items atomically.
+
+        Args:
+            items: List of (key, value) tuples
+            scope: Memory scope for all items
+            source: Source for all items
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+
+        Returns:
+            List of created/updated MemoryItems
+        """
+        ...
+
+    @abstractmethod
+    async def clear(
+        self,
+        scope: Optional[str] = None,
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+        prefix: Optional[str] = None,
+    ) -> int:
+        """
+        Clear memory items.
+
+        Args:
+            scope: Optional scope filter
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+            prefix: Optional key prefix filter
+
+        Returns:
+            Number of items deleted
+        """
+        ...
+
+    async def get_value(
+        self,
+        key: str,
+        default: Any = None,
+        scope: Optional[str] = None,
+        conversation_id: Optional[UUID] = None,
+        system_id: Optional[str] = None,
+    ) -> Any:
+        """
+        Convenience method to get just the value.
+
+        Args:
+            key: The semantic key
+            default: Default value if not found
+            scope: Optional scope filter
+            conversation_id: For conversation-scoped memories
+            system_id: For system-scoped memories
+
+        Returns:
+            The value if found, default otherwise
+        """
+        item = await self.get(key, scope, conversation_id, system_id)
+        return item.value if item else default
 
     async def close(self) -> None:
         """Close any connections. Override if needed."""

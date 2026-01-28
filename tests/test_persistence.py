@@ -588,3 +588,251 @@ class TestAuditModels:
         assert metric.unit == "ms"
         assert metric.tags["model"] == "gpt-4"
 
+
+# =============================================================================
+# Shared Memory Store Tests
+# =============================================================================
+
+from agent_runtime_core.persistence import (
+    SharedMemoryStore,
+    MemoryItem,
+    InMemorySharedMemoryStore,
+)
+
+
+class TestInMemorySharedMemoryStore:
+    """Tests for the InMemorySharedMemoryStore implementation."""
+
+    @pytest.fixture
+    def store(self):
+        """Create a fresh InMemorySharedMemoryStore for each test."""
+        return InMemorySharedMemoryStore()
+
+    @pytest.mark.asyncio
+    async def test_set_and_get(self, store):
+        """Test basic set and get operations."""
+        await store.set("user.name", "Alice", scope="user")
+
+        item = await store.get("user.name", scope="user")
+        assert item is not None
+        assert item.key == "user.name"
+        assert item.value == "Alice"
+        assert item.scope == "user"
+
+    @pytest.mark.asyncio
+    async def test_get_nonexistent(self, store):
+        """Test getting a key that doesn't exist."""
+        item = await store.get("nonexistent.key", scope="user")
+        assert item is None
+
+    @pytest.mark.asyncio
+    async def test_update_existing(self, store):
+        """Test updating an existing key."""
+        await store.set("user.name", "Alice", scope="user")
+        await store.set("user.name", "Bob", scope="user")
+
+        item = await store.get("user.name", scope="user")
+        assert item.value == "Bob"
+
+    @pytest.mark.asyncio
+    async def test_delete(self, store):
+        """Test deleting a memory."""
+        await store.set("user.name", "Alice", scope="user")
+
+        deleted = await store.delete("user.name", scope="user")
+        assert deleted is True
+
+        item = await store.get("user.name", scope="user")
+        assert item is None
+
+    @pytest.mark.asyncio
+    async def test_delete_nonexistent(self, store):
+        """Test deleting a key that doesn't exist."""
+        deleted = await store.delete("nonexistent.key", scope="user")
+        assert deleted is False
+
+    @pytest.mark.asyncio
+    async def test_list_all(self, store):
+        """Test listing all memories."""
+        await store.set("user.name", "Alice", scope="user")
+        await store.set("user.email", "alice@example.com", scope="user")
+        await store.set("project.name", "Test Project", scope="user")
+
+        items = await store.list(scope="user")
+        assert len(items) == 3
+        keys = {item.key for item in items}
+        assert keys == {"user.name", "user.email", "project.name"}
+
+    @pytest.mark.asyncio
+    async def test_list_with_prefix(self, store):
+        """Test listing memories with a prefix filter."""
+        await store.set("user.name", "Alice", scope="user")
+        await store.set("user.email", "alice@example.com", scope="user")
+        await store.set("project.name", "Test Project", scope="user")
+
+        items = await store.list(prefix="user.", scope="user")
+        assert len(items) == 2
+        keys = {item.key for item in items}
+        assert keys == {"user.name", "user.email"}
+
+    @pytest.mark.asyncio
+    async def test_list_with_limit(self, store):
+        """Test listing memories with a limit."""
+        for i in range(10):
+            await store.set(f"item.{i}", f"value{i}", scope="user")
+
+        items = await store.list(scope="user", limit=5)
+        assert len(items) == 5
+
+    @pytest.mark.asyncio
+    async def test_scope_isolation(self, store):
+        """Test that different scopes are isolated."""
+        await store.set("key", "user_value", scope="user")
+        await store.set("key", "system_value", scope="system")
+        await store.set("key", "conv_value", scope="conversation", conversation_id="conv1")
+
+        user_item = await store.get("key", scope="user")
+        system_item = await store.get("key", scope="system")
+        conv_item = await store.get("key", scope="conversation", conversation_id="conv1")
+
+        assert user_item.value == "user_value"
+        assert system_item.value == "system_value"
+        assert conv_item.value == "conv_value"
+
+    @pytest.mark.asyncio
+    async def test_conversation_isolation(self, store):
+        """Test that different conversations are isolated."""
+        await store.set("key", "conv1_value", scope="conversation", conversation_id="conv1")
+        await store.set("key", "conv2_value", scope="conversation", conversation_id="conv2")
+
+        conv1_item = await store.get("key", scope="conversation", conversation_id="conv1")
+        conv2_item = await store.get("key", scope="conversation", conversation_id="conv2")
+
+        assert conv1_item.value == "conv1_value"
+        assert conv2_item.value == "conv2_value"
+
+    @pytest.mark.asyncio
+    async def test_get_many(self, store):
+        """Test getting multiple keys at once."""
+        await store.set("user.name", "Alice", scope="user")
+        await store.set("user.email", "alice@example.com", scope="user")
+        await store.set("user.phone", "555-1234", scope="user")
+
+        # get_many returns a dict of key -> MemoryItem
+        items = await store.get_many(["user.name", "user.email", "nonexistent"], scope="user")
+        assert len(items) == 2
+        assert set(items.keys()) == {"user.name", "user.email"}
+        assert items["user.name"].value == "Alice"
+        assert items["user.email"].value == "alice@example.com"
+
+    @pytest.mark.asyncio
+    async def test_set_many(self, store):
+        """Test setting multiple items at once."""
+        # set_many takes a list of (key, value) tuples
+        items = [
+            ("user.name", "Alice"),
+            ("user.email", "alice@example.com"),
+        ]
+
+        await store.set_many(items, scope="user")
+
+        name = await store.get("user.name", scope="user")
+        email = await store.get("user.email", scope="user")
+
+        assert name.value == "Alice"
+        assert email.value == "alice@example.com"
+
+    @pytest.mark.asyncio
+    async def test_clear_all(self, store):
+        """Test clearing all memories."""
+        await store.set("user.name", "Alice", scope="user")
+        await store.set("user.email", "alice@example.com", scope="user")
+
+        deleted = await store.clear(scope="user")
+        assert deleted == 2
+
+        items = await store.list(scope="user")
+        assert len(items) == 0
+
+    @pytest.mark.asyncio
+    async def test_clear_with_prefix(self, store):
+        """Test clearing memories with a prefix."""
+        await store.set("user.name", "Alice", scope="user")
+        await store.set("user.email", "alice@example.com", scope="user")
+        await store.set("project.name", "Test", scope="user")
+
+        deleted = await store.clear(prefix="user.", scope="user")
+        assert deleted == 2
+
+        items = await store.list(scope="user")
+        assert len(items) == 1
+        assert items[0].key == "project.name"
+
+    @pytest.mark.asyncio
+    async def test_get_value_shortcut(self, store):
+        """Test the get_value convenience method."""
+        await store.set("user.name", "Alice", scope="user")
+
+        value = await store.get_value("user.name", scope="user")
+        assert value == "Alice"
+
+        missing = await store.get_value("nonexistent", scope="user")
+        assert missing is None
+
+        default = await store.get_value("nonexistent", scope="user", default="default")
+        assert default == "default"
+
+    @pytest.mark.asyncio
+    async def test_source_tracking(self, store):
+        """Test that source is tracked correctly."""
+        await store.set("user.name", "Alice", scope="user", source="agent:triage")
+
+        item = await store.get("user.name", scope="user")
+        assert item.source == "agent:triage"
+
+    @pytest.mark.asyncio
+    async def test_confidence_tracking(self, store):
+        """Test that confidence is tracked correctly."""
+        await store.set("user.name", "Alice", scope="user", confidence=0.9)
+
+        item = await store.get("user.name", scope="user")
+        assert item.confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_metadata_tracking(self, store):
+        """Test that metadata is tracked correctly."""
+        await store.set(
+            "user.name",
+            "Alice",
+            scope="user",
+            metadata={"inferred_from": "greeting"}
+        )
+
+        item = await store.get("user.name", scope="user")
+        assert item.metadata == {"inferred_from": "greeting"}
+
+    @pytest.mark.asyncio
+    async def test_timestamps(self, store):
+        """Test that timestamps are set correctly."""
+        await store.set("user.name", "Alice", scope="user")
+
+        item = await store.get("user.name", scope="user")
+        assert item.created_at is not None
+        assert item.updated_at is not None
+        assert item.created_at <= item.updated_at
+
+    @pytest.mark.asyncio
+    async def test_semantic_key_patterns(self, store):
+        """Test various semantic key patterns."""
+        # Dot notation
+        await store.set("user.preferences.theme", "dark", scope="user")
+        await store.set("user.preferences.language", "en", scope="user")
+        await store.set("user.preferences.notifications.email", "true", scope="user")
+
+        # List all preferences
+        prefs = await store.list(prefix="user.preferences", scope="user")
+        assert len(prefs) == 3
+
+        # List notification preferences
+        notif_prefs = await store.list(prefix="user.preferences.notifications", scope="user")
+        assert len(notif_prefs) == 1

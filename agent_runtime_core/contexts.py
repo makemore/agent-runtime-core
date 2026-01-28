@@ -24,10 +24,14 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from agent_runtime_core.interfaces import EventType, Message, ToolRegistry
+
+if TYPE_CHECKING:
+    from agent_runtime_core.multi_agent import SystemContext
+    from agent_runtime_core.privacy import PrivacyConfig, UserContext
 
 
 class InMemoryRunContext:
@@ -65,10 +69,13 @@ class InMemoryRunContext:
         metadata: Optional[dict] = None,
         tool_registry: Optional[ToolRegistry] = None,
         on_event: Optional[Callable[[str, dict], None]] = None,
+        system_context: Optional["SystemContext"] = None,
+        user_context: Optional["UserContext"] = None,
+        privacy_config: Optional["PrivacyConfig"] = None,
     ):
         """
         Initialize an in-memory run context.
-        
+
         Args:
             run_id: Unique identifier for this run (auto-generated if not provided)
             conversation_id: Associated conversation ID (optional)
@@ -77,6 +84,9 @@ class InMemoryRunContext:
             metadata: Run metadata
             tool_registry: Registry of available tools
             on_event: Optional callback for events (for testing/debugging)
+            system_context: Optional SystemContext for multi-agent systems with shared knowledge
+            user_context: Optional UserContext for user isolation and privacy
+            privacy_config: Optional PrivacyConfig for privacy settings (defaults to max privacy)
         """
         self._run_id = run_id or uuid4()
         self._conversation_id = conversation_id
@@ -88,7 +98,18 @@ class InMemoryRunContext:
         self._state: Optional[dict] = None
         self._events: list[dict] = []
         self._on_event = on_event
-    
+        self._system_context = system_context
+
+        # Import here to avoid circular imports
+        from agent_runtime_core.privacy import (
+            DEFAULT_PRIVACY_CONFIG,
+            ANONYMOUS_USER,
+        )
+
+        # Default to secure settings: anonymous user + strict privacy
+        self._user_context = user_context if user_context is not None else ANONYMOUS_USER
+        self._privacy_config = privacy_config if privacy_config is not None else DEFAULT_PRIVACY_CONFIG
+
     @property
     def run_id(self) -> UUID:
         """Unique identifier for this run."""
@@ -118,7 +139,22 @@ class InMemoryRunContext:
     def tool_registry(self) -> ToolRegistry:
         """Registry of available tools for this agent."""
         return self._tool_registry
-    
+
+    @property
+    def system_context(self) -> Optional["SystemContext"]:
+        """System context for multi-agent systems with shared knowledge."""
+        return self._system_context
+
+    @property
+    def user_context(self) -> "UserContext":
+        """User context for privacy and data isolation. Defaults to ANONYMOUS_USER."""
+        return self._user_context
+
+    @property
+    def privacy_config(self) -> "PrivacyConfig":
+        """Privacy configuration for this run. Defaults to DEFAULT_PRIVACY_CONFIG (strict)."""
+        return self._privacy_config
+
     async def emit(self, event_type: EventType | str, payload: dict) -> None:
         """Emit an event (stored in memory)."""
         event_type_str = event_type.value if hasattr(event_type, 'value') else str(event_type)
@@ -195,6 +231,9 @@ class FileRunContext:
         metadata: Optional[dict] = None,
         tool_registry: Optional[ToolRegistry] = None,
         on_event: Optional[Callable[[str, dict], None]] = None,
+        system_context: Optional["SystemContext"] = None,
+        user_context: Optional["UserContext"] = None,
+        privacy_config: Optional["PrivacyConfig"] = None,
     ):
         """
         Initialize a file-based run context.
@@ -208,6 +247,9 @@ class FileRunContext:
             metadata: Run metadata
             tool_registry: Registry of available tools
             on_event: Optional callback for events
+            system_context: Optional SystemContext for multi-agent systems with shared knowledge
+            user_context: Optional UserContext for user isolation and privacy
+            privacy_config: Optional PrivacyConfig for privacy settings (defaults to max privacy)
         """
         self._run_id = run_id or uuid4()
         self._checkpoint_dir = Path(checkpoint_dir)
@@ -219,6 +261,17 @@ class FileRunContext:
         self._cancelled = False
         self._on_event = on_event
         self._state_cache: Optional[dict] = None
+        self._system_context = system_context
+
+        # Import here to avoid circular imports
+        from agent_runtime_core.privacy import (
+            DEFAULT_PRIVACY_CONFIG,
+            ANONYMOUS_USER,
+        )
+
+        # Default to secure settings: anonymous user + strict privacy
+        self._user_context = user_context if user_context is not None else ANONYMOUS_USER
+        self._privacy_config = privacy_config if privacy_config is not None else DEFAULT_PRIVACY_CONFIG
 
         # Ensure checkpoint directory exists
         self._checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -252,6 +305,21 @@ class FileRunContext:
     def tool_registry(self) -> ToolRegistry:
         """Registry of available tools for this agent."""
         return self._tool_registry
+
+    @property
+    def system_context(self) -> Optional["SystemContext"]:
+        """System context for multi-agent systems with shared knowledge."""
+        return self._system_context
+
+    @property
+    def user_context(self) -> "UserContext":
+        """User context for privacy and data isolation. Defaults to ANONYMOUS_USER."""
+        return self._user_context
+
+    @property
+    def privacy_config(self) -> "PrivacyConfig":
+        """Privacy configuration for this run. Defaults to DEFAULT_PRIVACY_CONFIG (strict)."""
+        return self._privacy_config
 
     def _checkpoint_path(self) -> Path:
         """Get the path to the checkpoint file for this run."""

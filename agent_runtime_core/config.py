@@ -88,6 +88,9 @@ class RuntimeConfig:
     vertex_deployed_index_id: Optional[str] = None
     vertex_index_id: Optional[str] = None
 
+    # Debug mode - enables verbose logging, cost tracking, etc.
+    debug: bool = False
+
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key from config or environment."""
         return self.openai_api_key or os.environ.get("OPENAI_API_KEY")
@@ -204,6 +207,7 @@ def _apply_env_vars(config: RuntimeConfig) -> None:
     bool_fields = {
         "AGENT_RUNTIME_INCLUDE_CONVERSATION_HISTORY": "include_conversation_history",
         "AGENT_RUNTIME_AUTO_PERSIST_MESSAGES": "auto_persist_messages",
+        "AGENT_RUNTIME_DEBUG": "debug",
     }
 
     for env_var, attr in env_mapping.items():

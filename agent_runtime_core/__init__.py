@@ -34,7 +34,7 @@ Example usage:
             return RunResult(final_output={"message": "Hello!"})
 """
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 # Core interfaces
 from agent_runtime_core.interfaces import (
@@ -63,6 +63,7 @@ from agent_runtime_core.tool_calling_agent import ToolCallingAgent
 from agent_runtime_core.agentic_loop import (
     run_agentic_loop,
     AgenticLoopResult,
+    UsageStats,
 )
 
 # Configuration
@@ -187,17 +188,49 @@ from agent_runtime_core.tools import (
     schemas_to_openai_format,
 )
 
-# Multi-agent support (agent-as-tool pattern)
+# Multi-agent support (agent-as-tool pattern, system context)
 from agent_runtime_core.multi_agent import (
+    # System context for shared knowledge
+    SystemContext,
+    SharedKnowledge,
+    SharedMemoryConfig,
+    InjectMode,
+    # Agent-as-tool pattern
     AgentTool,
     AgentInvocationResult,
     InvocationMode,
     ContextMode,
     SubAgentContext,
     invoke_agent,
+    invoke_agent_with_fallback,
     create_agent_tool_handler,
     register_agent_tools,
     build_sub_agent_messages,
+    # Structured Handback Protocol
+    HandbackStatus,
+    HandbackResult,
+    Learning,
+    # Stuck/Loop Detection
+    StuckCondition,
+    StuckDetectionResult,
+    StuckDetector,
+    # Journey Mode
+    JourneyState,
+    JourneyEndReason,
+    JourneyEndResult,
+    JourneyManager,
+    JOURNEY_STATE_KEY,
+    # Fallback Routing
+    FallbackConfig,
+)
+
+# Privacy and user isolation
+from agent_runtime_core.privacy import (
+    PrivacyConfig,
+    UserContext,
+    MemoryScope,
+    DEFAULT_PRIVACY_CONFIG,
+    ANONYMOUS_USER,
 )
 
 # Cross-conversation memory
@@ -230,6 +263,7 @@ __all__ = [
     "ToolCallingAgent",
     "run_agentic_loop",
     "AgenticLoopResult",
+    "UsageStats",
     # Configuration
     "RuntimeConfig",
     "configure",
@@ -306,14 +340,42 @@ __all__ = [
     "ToolSchemaBuilder",
     "ToolParameter",
     "schemas_to_openai_format",
-    # Multi-agent support
+    # Multi-agent support - System context
+    "SystemContext",
+    "SharedKnowledge",
+    "SharedMemoryConfig",
+    "InjectMode",
+    # Multi-agent support - Agent-as-tool
     "AgentTool",
     "AgentInvocationResult",
     "InvocationMode",
     "ContextMode",
     "SubAgentContext",
     "invoke_agent",
+    "invoke_agent_with_fallback",
     "create_agent_tool_handler",
     "register_agent_tools",
     "build_sub_agent_messages",
+    # Multi-agent support - Structured Handback Protocol
+    "HandbackStatus",
+    "HandbackResult",
+    "Learning",
+    # Multi-agent support - Stuck/Loop Detection
+    "StuckCondition",
+    "StuckDetectionResult",
+    "StuckDetector",
+    # Multi-agent support - Journey Mode
+    "JourneyState",
+    "JourneyEndReason",
+    "JourneyEndResult",
+    "JourneyManager",
+    "JOURNEY_STATE_KEY",
+    # Multi-agent support - Fallback Routing
+    "FallbackConfig",
+    # Privacy and user isolation
+    "PrivacyConfig",
+    "UserContext",
+    "MemoryScope",
+    "DEFAULT_PRIVACY_CONFIG",
+    "ANONYMOUS_USER",
 ]

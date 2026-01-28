@@ -41,6 +41,9 @@ from agent_runtime_core.persistence.base import (
     # Optional stores
     KnowledgeStore,
     AuditStore,
+    # Shared memory
+    SharedMemoryStore,
+    MemoryItem,
     # Enums
     Scope,
     TaskState,
@@ -71,6 +74,7 @@ from agent_runtime_core.persistence.file import (
     FileTaskStore,
     FilePreferencesStore,
     FileKnowledgeStore,
+    InMemorySharedMemoryStore,
 )
 
 from agent_runtime_core.persistence.manager import (
@@ -89,6 +93,9 @@ __all__ = [
     # Abstract interfaces - optional
     "KnowledgeStore",
     "AuditStore",
+    # Shared memory
+    "SharedMemoryStore",
+    "MemoryItem",
     # Enums
     "Scope",
     "TaskState",
@@ -117,6 +124,7 @@ __all__ = [
     "FileTaskStore",
     "FilePreferencesStore",
     "FileKnowledgeStore",
+    "InMemorySharedMemoryStore",
     # Manager
     "PersistenceManager",
     "PersistenceConfig",

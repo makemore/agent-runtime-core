@@ -90,6 +90,83 @@ class AnthropicClient(LLMClient):
         
         return os.environ.get("ANTHROPIC_API_KEY")
 
+    def _validate_tool_call_pairs(self, messages: list[Message]) -> list[Message]:
+        """
+        Validate and repair tool_use/tool_result pairing in message history.
+
+        Anthropic requires that every tool_use block has a corresponding tool_result
+        block immediately after. This can be violated if a run fails mid-way through
+        tool execution (e.g., timeout, crash, API error during parallel tool calls).
+
+        This method removes orphaned tool_use blocks (assistant messages with tool_calls
+        that don't have corresponding tool results).
+
+        Args:
+            messages: List of messages in framework-neutral format
+
+        Returns:
+            Cleaned list of messages with orphaned tool_use blocks removed
+        """
+        if not messages:
+            return messages
+
+        # First pass: collect all tool_call_ids that have results
+        tool_result_ids = set()
+        for msg in messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id"):
+                tool_result_ids.add(msg["tool_call_id"])
+
+        # Second pass: check each assistant message with tool_calls
+        cleaned_messages = []
+        orphaned_count = 0
+
+        for msg in messages:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                # Check which tool_calls have results
+                tool_calls = msg.get("tool_calls", [])
+                valid_tool_calls = []
+                orphaned_ids = []
+
+                for tc in tool_calls:
+                    # Handle both formats: {"id": ...} and {"function": {...}, "id": ...}
+                    tc_id = tc.get("id")
+                    if tc_id in tool_result_ids:
+                        valid_tool_calls.append(tc)
+                    else:
+                        orphaned_ids.append(tc_id)
+
+                if orphaned_ids:
+                    orphaned_count += len(orphaned_ids)
+                    print(
+                        f"[anthropic] Removing {len(orphaned_ids)} orphaned tool_use blocks "
+                        f"without results: {orphaned_ids[:3]}{'...' if len(orphaned_ids) > 3 else ''}",
+                        flush=True,
+                    )
+
+                if valid_tool_calls:
+                    # Keep the message but only with valid tool_calls
+                    cleaned_msg = msg.copy()
+                    cleaned_msg["tool_calls"] = valid_tool_calls
+                    cleaned_messages.append(cleaned_msg)
+                elif msg.get("content"):
+                    # No valid tool_calls but has text content - keep as regular message
+                    cleaned_msg = {
+                        "role": "assistant",
+                        "content": msg["content"],
+                    }
+                    cleaned_messages.append(cleaned_msg)
+                # else: skip the message entirely (no valid tool_calls, no content)
+            else:
+                cleaned_messages.append(msg)
+
+        if orphaned_count > 0:
+            print(
+                f"[anthropic] Cleaned {orphaned_count} orphaned tool_use blocks from message history",
+                flush=True,
+            )
+
+        return cleaned_messages
+
     async def generate(
         self,
         messages: list[Message],
@@ -103,6 +180,9 @@ class AnthropicClient(LLMClient):
     ) -> LLMResponse:
         """Generate a completion from Anthropic."""
         model = model or self.default_model
+
+        # Validate and repair message history before processing
+        messages = self._validate_tool_call_pairs(messages)
 
         # Extract system message and convert other messages
         system_message = None
@@ -155,6 +235,9 @@ class AnthropicClient(LLMClient):
     ) -> AsyncIterator[LLMStreamChunk]:
         """Stream a completion from Anthropic."""
         model = model or self.default_model
+
+        # Validate and repair message history before processing
+        messages = self._validate_tool_call_pairs(messages)
 
         # Extract system message and convert other messages
         system_message = None

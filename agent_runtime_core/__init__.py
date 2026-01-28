@@ -34,7 +34,7 @@ Example usage:
             return RunResult(final_output={"message": "Hello!"})
 """
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 # Core interfaces
 from agent_runtime_core.interfaces import (

@@ -154,7 +154,7 @@ async def run_agentic_loop(
     ctx: RunContext,
     *,
     model: Optional[str] = None,
-    max_iterations: int = 15,
+    max_iterations: Optional[int] = None,
     emit_events: bool = True,
     ensure_final_response: bool = False,
     **llm_kwargs,
@@ -175,7 +175,8 @@ async def run_agentic_loop(
         execute_tool: Async function that executes a tool: (name, args) -> result
         ctx: Run context for emitting events
         model: Model to use (passed to LLM client)
-        max_iterations: Maximum loop iterations to prevent infinite loops
+        max_iterations: Maximum loop iterations to prevent infinite loops.
+            If None, uses the value from config (default: 50).
         emit_events: Whether to emit TOOL_CALL and TOOL_RESULT events
         ensure_final_response: If True, ensures a summary is generated when tools
             were used but the final response is empty or very short. This is useful
@@ -208,14 +209,18 @@ async def run_agentic_loop(
     max_consecutive_errors = 3  # Bail out if tool keeps failing
 
     # Initialize usage tracking (enabled in debug mode)
-    debug_mode = get_config().debug
+    config = get_config()
+    debug_mode = config.debug
     usage_stats = UsageStats() if debug_mode else None
     effective_model = model or "unknown"
 
-    while iteration < max_iterations:
+    # Use config default if max_iterations not specified
+    effective_max_iterations = max_iterations if max_iterations is not None else config.max_iterations
+
+    while iteration < effective_max_iterations:
         iteration += 1
-        print(f"[agentic-loop] Iteration {iteration}/{max_iterations}, messages={len(messages)}", flush=True)
-        logger.debug(f"Agentic loop iteration {iteration}/{max_iterations}")
+        print(f"[agentic-loop] Iteration {iteration}/{effective_max_iterations}, messages={len(messages)}", flush=True)
+        logger.debug(f"Agentic loop iteration {iteration}/{effective_max_iterations}")
 
         # Call LLM
         if tools:

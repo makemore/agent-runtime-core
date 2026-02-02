@@ -22,19 +22,48 @@ class ModelInfo:
     supports_tools: bool = True
     supports_vision: bool = False
     supports_streaming: bool = True
+    supports_thinking: bool = False  # Extended thinking (Anthropic) or reasoning (OpenAI)
     description: str = ""
 
 
 # Registry of supported models
 SUPPORTED_MODELS: dict[str, ModelInfo] = {
-    # OpenAI Models
+    # OpenAI Models - GPT-5 (latest)
+    "gpt-5": ModelInfo(
+        id="gpt-5",
+        name="GPT-5",
+        provider="openai",
+        context_window=256000,
+        supports_vision=True,
+        supports_thinking=True,
+        description="Most capable OpenAI model with reasoning",
+    ),
+    "gpt-5-mini": ModelInfo(
+        id="gpt-5-mini",
+        name="GPT-5 Mini",
+        provider="openai",
+        context_window=256000,
+        supports_vision=True,
+        supports_thinking=True,
+        description="Fast GPT-5 variant with reasoning",
+    ),
+    "gpt-5-turbo": ModelInfo(
+        id="gpt-5-turbo",
+        name="GPT-5 Turbo",
+        provider="openai",
+        context_window=256000,
+        supports_vision=True,
+        supports_thinking=True,
+        description="Balanced GPT-5 variant for production",
+    ),
+    # OpenAI Models - GPT-4o
     "gpt-4o": ModelInfo(
         id="gpt-4o",
         name="GPT-4o",
         provider="openai",
         context_window=128000,
         supports_vision=True,
-        description="Most capable OpenAI model, multimodal",
+        description="Most capable GPT-4 model, multimodal",
     ),
     "gpt-4o-mini": ModelInfo(
         id="gpt-4o-mini",
@@ -52,12 +81,14 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         supports_vision=True,
         description="Previous generation flagship",
     ),
+    # OpenAI Models - o-series (reasoning)
     "o1": ModelInfo(
         id="o1",
         name="o1",
         provider="openai",
         context_window=200000,
         supports_tools=False,
+        supports_thinking=True,
         description="Advanced reasoning model",
     ),
     "o1-mini": ModelInfo(
@@ -66,6 +97,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="openai",
         context_window=128000,
         supports_tools=False,
+        supports_thinking=True,
         description="Fast reasoning model",
     ),
     "o3-mini": ModelInfo(
@@ -74,6 +106,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="openai",
         context_window=200000,
         supports_tools=True,
+        supports_thinking=True,
         description="Latest reasoning model with tool use",
     ),
     
@@ -84,6 +117,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="anthropic",
         context_window=200000,
         supports_vision=True,
+        supports_thinking=True,
         description="Best balance of speed and capability for agents and coding",
     ),
     "claude-opus-4-5-20251101": ModelInfo(
@@ -92,6 +126,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="anthropic",
         context_window=200000,
         supports_vision=True,
+        supports_thinking=True,
         description="Premium model - maximum intelligence with practical performance",
     ),
     "claude-haiku-4-5-20251001": ModelInfo(
@@ -100,6 +135,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="anthropic",
         context_window=200000,
         supports_vision=True,
+        supports_thinking=True,
         description="Fastest model with near-frontier intelligence",
     ),
     # Anthropic Models - Claude 4 (previous generation)
@@ -109,6 +145,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="anthropic",
         context_window=200000,
         supports_vision=True,
+        supports_thinking=True,
         description="Previous generation Sonnet",
     ),
     "claude-opus-4-20250514": ModelInfo(
@@ -117,6 +154,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="anthropic",
         context_window=200000,
         supports_vision=True,
+        supports_thinking=True,
         description="Previous generation Opus",
     ),
     # Anthropic Models - Claude 3.5 (legacy)
@@ -126,6 +164,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="anthropic",
         context_window=200000,
         supports_vision=True,
+        supports_thinking=True,
         description="Legacy model, still excellent",
     ),
     "claude-3-5-haiku-20241022": ModelInfo(
@@ -134,6 +173,7 @@ SUPPORTED_MODELS: dict[str, ModelInfo] = {
         provider="anthropic",
         context_window=200000,
         supports_vision=True,
+        supports_thinking=True,
         description="Legacy fast model",
     ),
 }
@@ -150,19 +190,20 @@ def get_model_info(model_id: str) -> Optional[ModelInfo]:
 def get_provider_for_model(model_id: str) -> Optional[str]:
     """
     Detect the provider for a model ID.
-    
+
     Returns "openai", "anthropic", or None if unknown.
     """
     # Check registry first
     if model_id in SUPPORTED_MODELS:
         return SUPPORTED_MODELS[model_id].provider
-    
+
     # Fallback heuristics for unlisted models
-    if model_id.startswith("gpt-") or model_id.startswith("o1") or model_id.startswith("o3"):
+    if (model_id.startswith("gpt-") or model_id.startswith("o1") or
+        model_id.startswith("o3") or model_id.startswith("gpt5")):
         return "openai"
     if model_id.startswith("claude"):
         return "anthropic"
-    
+
     return None
 
 
@@ -174,6 +215,9 @@ def list_models_for_ui() -> list[dict]:
             "name": m.name,
             "provider": m.provider,
             "description": m.description,
+            "supports_thinking": m.supports_thinking,
+            "supports_tools": m.supports_tools,
+            "supports_vision": m.supports_vision,
         }
         for m in SUPPORTED_MODELS.values()
     ]

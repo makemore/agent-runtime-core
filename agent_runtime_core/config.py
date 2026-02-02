@@ -91,6 +91,9 @@ class RuntimeConfig:
     # Debug mode - enables verbose logging, cost tracking, etc.
     debug: bool = False
 
+    # Agentic loop settings
+    max_iterations: int = 50  # Maximum iterations for tool-calling loops
+
     def get_openai_api_key(self) -> Optional[str]:
         """Get OpenAI API key from config or environment."""
         return self.openai_api_key or os.environ.get("OPENAI_API_KEY")
@@ -202,6 +205,7 @@ def _apply_env_vars(config: RuntimeConfig) -> None:
         "AGENT_RUNTIME_RETRY_BACKOFF_BASE": "retry_backoff_base",
         "AGENT_RUNTIME_RETRY_BACKOFF_MAX": "retry_backoff_max",
         "AGENT_RUNTIME_MAX_HISTORY_MESSAGES": "max_history_messages",
+        "AGENT_RUNTIME_MAX_ITERATIONS": "max_iterations",
     }
 
     bool_fields = {

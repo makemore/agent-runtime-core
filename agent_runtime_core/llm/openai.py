@@ -104,9 +104,27 @@ class OpenAIClient(LLMClient):
         tools: Optional[list[dict]] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        thinking: bool = False,
+        reasoning_effort: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
-        """Generate a completion from OpenAI."""
+        """
+        Generate a completion from OpenAI.
+
+        Args:
+            messages: List of messages in framework-neutral format
+            model: Model ID to use (defaults to self.default_model)
+            stream: Whether to stream (not used here, use stream() method)
+            tools: List of tools in OpenAI format
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            thinking: Enable reasoning mode for o-series and GPT-5 models
+            reasoning_effort: Reasoning effort level: "low", "medium", or "high"
+            **kwargs: Additional parameters passed to the API
+
+        Returns:
+            LLMResponse with the generated message
+        """
         model = model or self.default_model
 
         request_kwargs = {
@@ -120,6 +138,15 @@ class OpenAIClient(LLMClient):
             request_kwargs["temperature"] = temperature
         if max_tokens is not None:
             request_kwargs["max_tokens"] = max_tokens
+
+        # Handle reasoning mode for o-series and GPT-5 models
+        if thinking or reasoning_effort:
+            # reasoning_effort controls how much reasoning the model does
+            # Valid values: "low", "medium", "high"
+            effort = reasoning_effort or "medium"
+            if effort not in ("low", "medium", "high"):
+                effort = "medium"
+            request_kwargs["reasoning_effort"] = effort
 
         request_kwargs.update(kwargs)
 
@@ -146,9 +173,24 @@ class OpenAIClient(LLMClient):
         *,
         model: Optional[str] = None,
         tools: Optional[list[dict]] = None,
+        thinking: bool = False,
+        reasoning_effort: Optional[str] = None,
         **kwargs,
     ) -> AsyncIterator[LLMStreamChunk]:
-        """Stream a completion from OpenAI."""
+        """
+        Stream a completion from OpenAI.
+
+        Args:
+            messages: List of messages
+            model: Model ID to use
+            tools: List of tools in OpenAI format
+            thinking: Enable reasoning mode for o-series and GPT-5 models
+            reasoning_effort: Reasoning effort level: "low", "medium", or "high"
+            **kwargs: Additional parameters
+
+        Yields:
+            LLMStreamChunk with delta content
+        """
         model = model or self.default_model
 
         request_kwargs = {
@@ -159,6 +201,13 @@ class OpenAIClient(LLMClient):
 
         if tools:
             request_kwargs["tools"] = tools
+
+        # Handle reasoning mode for o-series and GPT-5 models
+        if thinking or reasoning_effort:
+            effort = reasoning_effort or "medium"
+            if effort not in ("low", "medium", "high"):
+                effort = "medium"
+            request_kwargs["reasoning_effort"] = effort
 
         request_kwargs.update(kwargs)
 

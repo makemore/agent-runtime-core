@@ -75,8 +75,10 @@ class ToolCallingAgent(AgentRuntime):
         Maximum number of tool-calling iterations.
 
         Override to change the default limit.
+        Default uses the value from config (default: 50).
         """
-        return 15
+        from agent_runtime_core.config import get_config
+        return get_config().max_iterations
 
     @property
     def model(self) -> Optional[str]:

@@ -176,9 +176,27 @@ class AnthropicClient(LLMClient):
         tools: Optional[list[dict]] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        thinking: bool = False,
+        thinking_budget: Optional[int] = None,
         **kwargs,
     ) -> LLMResponse:
-        """Generate a completion from Anthropic."""
+        """
+        Generate a completion from Anthropic.
+
+        Args:
+            messages: List of messages in framework-neutral format
+            model: Model ID to use (defaults to self.default_model)
+            stream: Whether to stream the response (not used here, use stream() method)
+            tools: List of tools in OpenAI format
+            temperature: Sampling temperature (0.0 to 1.0)
+            max_tokens: Maximum tokens to generate
+            thinking: Enable extended thinking mode for deeper reasoning
+            thinking_budget: Max tokens for thinking (default: 10000, max: 128000)
+            **kwargs: Additional parameters passed to the API
+
+        Returns:
+            LLMResponse with the generated message
+        """
         model = model or self.default_model
 
         # Validate and repair message history before processing
@@ -206,15 +224,28 @@ class AnthropicClient(LLMClient):
             request_kwargs["system"] = system_message
         if tools:
             request_kwargs["tools"] = self._convert_tools(tools)
-        if temperature is not None:
+
+        # Handle extended thinking mode
+        if thinking:
+            # Extended thinking requires specific configuration
+            # Temperature must be 1.0 when using thinking
+            request_kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_budget or 10000,
+            }
+            # Temperature must be exactly 1.0 for extended thinking
+            request_kwargs["temperature"] = 1.0
+        elif temperature is not None:
             request_kwargs["temperature"] = temperature
 
         request_kwargs.update(kwargs)
 
         response = await self._client.messages.create(**request_kwargs)
 
+        message, thinking_content = self._convert_response(response)
+
         return LLMResponse(
-            message=self._convert_response(response),
+            message=message,
             usage={
                 "prompt_tokens": response.usage.input_tokens,
                 "completion_tokens": response.usage.output_tokens,
@@ -223,6 +254,7 @@ class AnthropicClient(LLMClient):
             model=response.model,
             finish_reason=response.stop_reason or "",
             raw_response=response,
+            thinking=thinking_content,
         )
 
     async def stream(
@@ -231,9 +263,26 @@ class AnthropicClient(LLMClient):
         *,
         model: Optional[str] = None,
         tools: Optional[list[dict]] = None,
+        thinking: bool = False,
+        thinking_budget: Optional[int] = None,
+        temperature: Optional[float] = None,
         **kwargs,
     ) -> AsyncIterator[LLMStreamChunk]:
-        """Stream a completion from Anthropic."""
+        """
+        Stream a completion from Anthropic.
+
+        Args:
+            messages: List of messages in framework-neutral format
+            model: Model ID to use
+            tools: List of tools in OpenAI format
+            thinking: Enable extended thinking mode
+            thinking_budget: Max tokens for thinking (default: 10000)
+            temperature: Sampling temperature (ignored if thinking=True)
+            **kwargs: Additional parameters
+
+        Yields:
+            LLMStreamChunk with delta content and thinking content
+        """
         model = model or self.default_model
 
         # Validate and repair message history before processing
@@ -262,6 +311,16 @@ class AnthropicClient(LLMClient):
         if tools:
             request_kwargs["tools"] = self._convert_tools(tools)
 
+        # Handle extended thinking mode
+        if thinking:
+            request_kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_budget or 10000,
+            }
+            request_kwargs["temperature"] = 1.0
+        elif temperature is not None:
+            request_kwargs["temperature"] = temperature
+
         request_kwargs.update(kwargs)
 
         async with self._client.messages.stream(**request_kwargs) as stream:
@@ -269,6 +328,9 @@ class AnthropicClient(LLMClient):
                 if event.type == "content_block_delta":
                     if hasattr(event.delta, "text"):
                         yield LLMStreamChunk(delta=event.delta.text)
+                    elif hasattr(event.delta, "thinking"):
+                        # Extended thinking content
+                        yield LLMStreamChunk(delta="", thinking=event.delta.thinking)
                 elif event.type == "message_stop":
                     yield LLMStreamChunk(finish_reason="stop")
 
@@ -410,14 +472,23 @@ class AnthropicClient(LLMClient):
                 })
         return result
 
-    def _convert_response(self, response) -> Message:
-        """Convert Anthropic response to our format."""
+    def _convert_response(self, response) -> tuple[Message, Optional[str]]:
+        """
+        Convert Anthropic response to our format.
+
+        Returns:
+            Tuple of (message, thinking_content)
+        """
         content = ""
         tool_calls = []
+        thinking_content = None
 
         for block in response.content:
             if block.type == "text":
                 content += block.text
+            elif block.type == "thinking":
+                # Extended thinking block
+                thinking_content = block.thinking
             elif block.type == "tool_use":
                 # Convert input to JSON string (not Python str() which gives wrong format)
                 arguments = json.dumps(block.input) if isinstance(block.input, dict) else str(block.input)
@@ -438,4 +509,4 @@ class AnthropicClient(LLMClient):
         if tool_calls:
             result["tool_calls"] = tool_calls
 
-        return result
+        return result, thinking_content

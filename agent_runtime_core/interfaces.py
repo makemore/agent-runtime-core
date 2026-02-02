@@ -323,13 +323,21 @@ class ToolRegistry:
         """
         return self.to_openai_format()
 
-    async def execute(self, name: str, arguments: dict) -> Any:
+    async def execute(
+        self,
+        name: str,
+        arguments: dict,
+        ctx: Optional["RunContext"] = None,
+        **kwargs
+    ) -> Any:
         """
         Execute a tool by name.
 
         Args:
             name: Tool name
             arguments: Tool arguments
+            ctx: Optional RunContext, passed to handlers with requires_context=True
+            **kwargs: Additional arguments to pass to the handler
 
         Returns:
             Tool result
@@ -340,7 +348,15 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if not tool:
             raise KeyError(f"Tool not found: {name}")
-        return await tool.handler(**arguments)
+
+        # Check if the tool requires context
+        requires_context = tool.metadata.get('requires_context', False) if tool.metadata else False
+
+        if requires_context and ctx is not None:
+            # Pass ctx to the handler for tools that need it (e.g., sub-agent tools)
+            return await tool.handler(**arguments, ctx=ctx, **kwargs)
+        else:
+            return await tool.handler(**arguments, **kwargs)
 
     async def execute_with_events(
         self,
@@ -350,19 +366,19 @@ class ToolRegistry:
     ) -> Any:
         """
         Execute a tool and automatically emit events.
-        
+
         This is a convenience method that wraps execute() and handles
         event emission automatically. Use this in your agent loop to
         reduce boilerplate.
-        
+
         Args:
             tool_call: Tool call object with name, arguments, and id
             ctx: Run context for emitting events
             **kwargs: Additional arguments to pass to the tool
-        
+
         Returns:
             Tool result
-        
+
         Example:
             for tool_call in response.tool_calls:
                 result = await tools.execute_with_events(tool_call, ctx)
@@ -373,17 +389,17 @@ class ToolRegistry:
             "tool_args": tool_call.arguments,
             "tool_call_id": tool_call.id,
         })
-        
-        # Execute the tool
-        result = await self.execute(tool_call.name, tool_call.arguments, **kwargs)
-        
+
+        # Execute the tool, passing ctx for tools that require it
+        result = await self.execute(tool_call.name, tool_call.arguments, ctx=ctx, **kwargs)
+
         # Emit tool result event
         await ctx.emit(EventType.TOOL_RESULT, {
             "tool_name": tool_call.name,
             "tool_call_id": tool_call.id,
             "result": result,
         })
-        
+
         return result
 
 
@@ -501,6 +517,7 @@ class LLMResponse:
     model: str = ""
     finish_reason: str = ""
     raw_response: Optional[Any] = None
+    thinking: Optional[str] = None  # Extended thinking content (Anthropic)
 
     @property
     def tool_calls(self) -> Optional[list["LLMToolCall"]]:
@@ -528,6 +545,7 @@ class LLMStreamChunk:
     tool_calls: Optional[list] = None
     finish_reason: Optional[str] = None
     usage: Optional[dict] = None
+    thinking: Optional[str] = None  # Extended thinking content (Anthropic)
 
 
 class TraceSink(ABC):

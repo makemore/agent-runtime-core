@@ -1230,7 +1230,17 @@ class SubAgentContext:
         return ToolRegistry()
     
     async def emit(self, event_type: EventType | str, payload: dict) -> None:
-        """Emit events through parent context with sub-agent tagging."""
+        """Emit events through parent context with sub-agent tagging.
+
+        Note: ASSISTANT_MESSAGE events are suppressed for sub-agents because
+        the parent agent will relay the response. This prevents duplicate
+        messages in the UI.
+        """
+        # Suppress ASSISTANT_MESSAGE events from sub-agents to prevent duplicates
+        # The parent agent will relay the sub-agent's response
+        if event_type == EventType.ASSISTANT_MESSAGE or event_type == "assistant.message":
+            return
+
         # Tag the event as coming from a sub-agent
         tagged_payload = dict(payload)
         tagged_payload["sub_agent_run_id"] = str(self._run_id)
